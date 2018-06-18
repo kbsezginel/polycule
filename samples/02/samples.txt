@@ -1,0 +1,27 @@
+ 1 - Hissing Rain
+ 2 - Analogue Hiss Mid Cut
+ 3 - Crackle Pops
+ 4 - Hum & Buzz
+ 5 - Hi Stereo Crackle
+ 6 - Analogue Hiss Hi Boost
+ 7 - Lo Stereo Crackle
+ 8 - FizzPopper2
+ 9 - Fake Vinyl 1
+10 - Rumbly Noise
+11 - Analogue Hiss Lo Boost
+12 - Strange Buzz 2
+13 - AdlibBlaster Glitch
+14 - Lo Crackle
+15 - Analogue Hiss Lo Cut
+16 - Strange Buzz 1
+17 - Lo Hum
+18 - Analogue Hiss Flat EQ
+19 - Fake Vinyl 2
+20 - Noisy Stream
+21 - Noise
+22 - FizzPop
+23 - Strange Buzz 3
+24 - Analogue Hiss Mid Boost
+25 - Analogue Hiss Hi Cut
+26 - Crunchy Crackle
+27 - Pinched Noise
