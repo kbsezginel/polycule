@@ -1,0 +1,11 @@
+theme: jekyll-theme-minimal
+title: Polycule
+description: Electronics, music instruments
+show_downloads: True
+navigation:
+  - title: Home
+    url: /
+  - title: One-shot
+    url: one-shot
+  - title: Resources
+    url: resources
