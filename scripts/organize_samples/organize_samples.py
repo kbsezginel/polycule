@@ -12,7 +12,7 @@ AUDIO_SRC = os.path.abspath(sys.argv[1])
 ASK_ORDER = False
 
 
-def convert_mp3(audio_in, audio_out, bit_rate=320000, sample_rate=44100):
+def convert_mp3(audio_in, audio_out, bit_rate=256000, sample_rate=44100):
     """ Convert audio file to mp3. """
     avconv = ['avconv', '-i', audio_in, '-f', 'mp3', '-acodec', 'libmp3lame', '-ab', str(bit_rate), '-ar', str(sample_rate), audio_out]
     subprocess.run(avconv)
