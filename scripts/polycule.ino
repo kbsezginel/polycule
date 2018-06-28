@@ -149,14 +149,13 @@ void loop()
    }
    // MP3 PLAYER AND SETTINGS MODE ---------------------------------------------------
    else if(digitalRead(switch2Pin) == HIGH){
-    lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS);
     switch(key){
-      case 1: mp3.start(); break;
+      case 1: mp3.start(); lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS); break;
       case 2: mp3.pause(); waitMilliseconds(WAIT_TIME); break;
-      case 3: TRACK_NO += 1; mp3.playMp3FolderTrack(TRACK_NO); break;
-      case 4: TRACK_NO -= 1; mp3.playMp3FolderTrack(TRACK_NO); break;
-      case 5: TRACK_NO = random(1, NUM_MP3_TRACKS); mp3.playMp3FolderTrack(TRACK_NO); break;
-      case 6: TRACK_NO = 1; mp3.playMp3FolderTrack(TRACK_NO); break;
+      case 3: TRACK_NO += 1; mp3.playMp3FolderTrack(TRACK_NO); lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS); break;
+      case 4: TRACK_NO -= 1; mp3.playMp3FolderTrack(TRACK_NO); lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS); break;
+      case 5: TRACK_NO = random(1, NUM_MP3_TRACKS); mp3.playMp3FolderTrack(TRACK_NO); lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS); break;
+      case 6: TRACK_NO = 1; mp3.playMp3FolderTrack(TRACK_NO); lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS); break;
       case 13:
         potValue = analogRead(potPin);
         potLED = map(potValue, 0, 1023, 0, 8);
@@ -178,6 +177,11 @@ void loop()
         WAIT_TIME = potMAP;
         lightPixels(potLED, LED_COLOR, LED_BRIGHTNESS);
         break;
+      case 16:
+        potValue = analogRead(potPin);
+        potMAP = map(potValue, 0, 1023, 0, 250);
+        LED_COLOR = colorWheel(potMAP);
+        lightPixels(8, LED_COLOR, LED_BRIGHTNESS);
      }
    }
    mp3.loop();
