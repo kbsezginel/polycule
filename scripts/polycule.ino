@@ -108,14 +108,13 @@ void setup()
   pixels.begin();      // This initializes the NeoPixel library.
   clearPixels();       // Clear all LEDs
 
-  LED_COLOR4 = colorWheel(150);  // Blue
-  LED_COLOR3 = colorWheel(28);   // Yellow
+  LED_COLOR1 = colorWheel(28);   // Yellow
   LED_COLOR2 = colorWheel(20);   // Red
-  LED_COLOR1 = colorWheel(0);    // Purple
+  LED_COLOR3 = colorWheel(0);    // Purple
+  LED_COLOR4 = colorWheel(150);  // Blue
   LED_COLOR = LED_COLOR1;
 
-  ledAnim(1, 32, 8, LED_COLOR4, false);
-  ledAnim(1, 32, 8, LED_COLOR3, false);
+  ledAnim(1, 32, 8, LED_COLOR1, false);
   ledAnim(1, 32, 8, LED_COLOR2, false);
   ledAnim(1, 32, 8, LED_COLOR1, true);
 
@@ -156,6 +155,10 @@ void loop()
       case 4: TRACK_NO -= 1; mp3.playMp3FolderTrack(TRACK_NO); lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS); break;
       case 5: TRACK_NO = random(1, NUM_MP3_TRACKS); mp3.playMp3FolderTrack(TRACK_NO); lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS); break;
       case 6: TRACK_NO = 1; mp3.playMp3FolderTrack(TRACK_NO); lightPixels(TRACK_NO, LED_COLOR, LED_BRIGHTNESS); break;
+      case 9: ledAnim(1, 50, 6, LED_COLOR1, false); ledAnim(1, 50, 6, LED_COLOR1, false); ledAnim(2, 30, 8, LED_COLOR2, true); break;
+      case 10: ledAnim(1, 50, 4, LED_COLOR3, false); ledAnim(1, 50, 4, LED_COLOR3, false); ledAnim(2, 30, 8, LED_COLOR2, true); break;
+      case 11: ledAnim(1, 70, 8, LED_COLOR4, false); ledAnim(1, 70, 8, LED_COLOR4, false); ledAnim(2, 30, 8, LED_COLOR3, true); break;
+      case 12: ledAnim(1, 100, 8, LED_COLOR2, false); ledAnim(1, 100, 8, LED_COLOR1, false); ledAnim(2, 30, 8, LED_COLOR2, true); break;
       case 13:
         potValue = analogRead(potPin);
         potLED = map(potValue, 0, 1023, 0, 8);
