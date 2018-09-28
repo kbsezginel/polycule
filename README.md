@@ -3,7 +3,7 @@ Arduino one-shot audio sampler &amp; mp3 player
 
 ## [One-shot audio sampler](https://kbsezginel.github.io/polycule/one-shot)
 
-<p align="center"><img src="assets/img/polycule-one-shot-front.png"></p>
+<p align="center"><img src="assets/img/polycule-one-shot-front.png" width="300"></p>
 
 
 ## PO-24 Cheat Sheet
