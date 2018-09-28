@@ -1,6 +1,8 @@
 # One-shot
 One-shot audio playback and MP3 player device
 
+<p align="center"><img src="assets/img/polycule-one-shot-front.png"></p>
+
 ## DIY
 
 ### What you need
@@ -11,10 +13,30 @@ One-shot audio playback and MP3 player device
 - One 3-way toggle switch
 - 2 10K Potentiometers
 
-## Scripts
+## Software
 
 ### Polycule.ino
 [Polycule Arduino script.](https://github.com/kbsezginel/polycule/blob/master/scripts/polycule.ino)
 
 ### Sample organizer
 [Organize and convert samples to mp3 (Linux).](https://github.com/kbsezginel/polycule/tree/master/scripts/organize_samples)
+
+## Usage
+
+One-shot has two modes:
+- Sample player
+- MP3 player
+
+The modes can be selected using the switch.
+
+### Sample Player Mode
+
+- Buttons 1-12 play samples.
+- Buttons 13-16 select sample sets.
+
+### MP3 Player Mode
+
+- Button 1 -> Play
+- Button 2 -> Pause
+- Button 3 -> Next song
+- Button 4 -> Previous song
