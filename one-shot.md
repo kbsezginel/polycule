@@ -1,7 +1,7 @@
 # One-shot
 One-shot audio playback and MP3 player device
 
-<p align="center"><img src="assets/img/polycule-one-shot-front.png"></p>
+<p align="center"><img src="assets/img/polycule-one-shot-front.png" width="300"></p>
 
 ## DIY
 
@@ -40,3 +40,12 @@ The modes can be selected using the switch.
 - Button 2 -> Pause
 - Button 3 -> Next song
 - Button 4 -> Previous song
+- Button 5 -> Random song
+- Button 6 -> First song
+
+#### Settings
+
+- Button 13 & Pot1 -> Set volume
+- Button 14 & Pot1 -> LED brightness
+- Button 15 & Pot1 -> Wait time
+- Button 16 & Pot1 -> LED color
