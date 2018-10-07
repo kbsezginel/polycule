@@ -1,8 +1,6 @@
 # One-shot
 One-shot audio playback and MP3 player device
 
-<p align="center"><img src="assets/img/polycule-one-shot-front.png" width="250"></p>
-
 ## DIY
 
 ### What you need
@@ -23,7 +21,7 @@ One-shot audio playback and MP3 player device
 
 ## Usage
 
-<p align="center"><img src="assets/img/polycule-one-shot-cheatsheet.png" width="500"></p>
+<p align="center"><img src="assets/img/polycule-one-shot-cheatsheet.png" width="600"></p>
 
 One-shot has two modes:
 - Sample player
