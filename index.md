@@ -4,4 +4,5 @@ layout: default
 # {{site.title}}
 {{site.description}}
 
-<p align="center"><img src="assets/img/polycule-one-shot-front.png"></p>
+## One-shot
+<p align="center"><img src="assets/img/polycule-one-shot-front.png" width="250"></p>

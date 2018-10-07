@@ -1,7 +1,7 @@
 # One-shot
 One-shot audio playback and MP3 player device
 
-<p align="center"><img src="assets/img/polycule-one-shot-front.png" width="300"></p>
+<p align="center"><img src="assets/img/polycule-one-shot-front.png" width="250"></p>
 
 ## DIY
 
@@ -23,6 +23,8 @@ One-shot audio playback and MP3 player device
 
 ## Usage
 
+<p align="center"><img src="assets/img/polycule-one-shot-cheatsheet.png" width="500"></p>
+
 One-shot has two modes:
 - Sample player
 - MP3 player
@@ -31,8 +33,9 @@ The modes can be selected using the switch.
 
 ### Sample Player Mode
 
-- Buttons 1-12 play samples.
-- Buttons 13-16 select sample sets.
+- Buttons 1-12 play samples
+- Buttons 13-16 select sample sets
+- Pot B is a low pas filter
 
 ### MP3 Player Mode
 
@@ -45,7 +48,7 @@ The modes can be selected using the switch.
 
 #### Settings
 
-- Button 13 & Pot1 -> Set volume
-- Button 14 & Pot1 -> LED brightness
-- Button 15 & Pot1 -> Wait time
-- Button 16 & Pot1 -> LED color
+- Button 13 & Pot A -> Set volume
+- Button 14 & Pot A -> LED brightness
+- Button 15 & Pot A -> Wait time
+- Button 16 & Pot A-> LED color
