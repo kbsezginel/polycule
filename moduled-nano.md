@@ -29,7 +29,7 @@ I designed the case using `Blender` 3D rendering software and exported an `stl` 
 ## Software
 
 ### moduled_nano.ino
-[Moduled Nano Arduino script.](https://github.com/kbsezginel/polycule/blob/master/scripts/moduled_nano.ino)
+[Moduled Nano Arduino script.](https://github.com/kbsezginel/polycule/blob/master/moduled/moduled_nano.ino)
 
 ### Setting up custom LED animations
 Using this [online LED matrix editor](https://xantorohara.github.io/led-matrix-editor/) you can setup a sequence of images to be added as an animation.
