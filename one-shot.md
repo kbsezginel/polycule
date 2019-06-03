@@ -15,11 +15,11 @@ One-shot audio playback and MP3 player device
 
 ## Software
 
-### Polycule.ino
-[Polycule Arduino script.](https://github.com/kbsezginel/polycule/blob/master/scripts/polycule.ino)
+### one_shot.ino
+[Polycule Arduino script.](https://github.com/kbsezginel/polycule/blob/master/one-shot/one_shot.ino)
 
 ### Sample organizer
-[Organize and convert samples to mp3 (Linux).](https://github.com/kbsezginel/polycule/tree/master/scripts/organize_samples)
+[Organize and convert samples to mp3 (Linux).](https://github.com/kbsezginel/polycule/tree/master/one-shot/organize_samples)
 
 ## Usage
 
