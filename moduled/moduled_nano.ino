@@ -25,7 +25,6 @@ const int buttonPin2 = 20;
 // 1) DIN (Pin 12) | 2) CLK (PIN 11) | 3) LOAD or CS (PIN 10)
 LedControl ledMatrix = LedControl(12,11,10,1);
 
-
 // CROSS BIG TO SMALL ANIMATION
 const uint64_t IMAGES[] PROGMEM = {
   0xffc3a59999a5c3ff,
