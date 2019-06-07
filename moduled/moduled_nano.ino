@@ -7,7 +7,7 @@
 // ---------------------------------- MIDI SETUP ------------------------------------
 MIDI_CREATE_DEFAULT_INSTANCE();
 // ---------------------------- NEOPIXEL LED RING SETUP -----------------------------
-const int ledRingPin = 5;
+const int ledRingPin = 13;
 const int ledRingPixels = 8;
 Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(ledRingPixels, ledRingPin, NEO_GRB + NEO_KHZ800);
 int colorIdx = 0;
@@ -17,10 +17,10 @@ const int potPin2 = 6;
 int intensityVal;
 int delayVal = 100;
 // -------------------------------- SWITCH SETUP ------------------------------------
-const int switchPin = 2;
+const int switchPin = 6;
 // -------------------------------- BUTTON SETUP ------------------------------------
-const int buttonPin1 = 2;
-const int buttonPin2 = 20;
+const int buttonPin1 = 4;
+const int buttonPin2 = 8;
 // ------------------------------- LED MATRIX SETUP ---------------------------------
 // 1) DIN (Pin 12) | 2) CLK (PIN 11) | 3) LOAD or CS (PIN 10)
 LedControl ledMatrix = LedControl(12,11,10,1);
@@ -61,13 +61,18 @@ void setup() {
 
   pinMode(switchPin, INPUT);
   pinMode(buttonPin1, INPUT);
+  pinMode(buttonPin2, INPUT);
 }
 // -------------------------------------------------------
 // LOOP -----------------------------------------------
-int i = 0;
 void loop() {
-  // Read MIDI
-  MIDI.read();
+
+  if (digitalRead(switchPin) == HIGH) {
+    // Read MIDI
+    MIDI.read();
+  } else {
+    playAnimation();
+  }
 
   setKnob1();
   setKnob2();
@@ -76,12 +81,6 @@ void loop() {
 
 // MIDI FUNCTIONS -----------------------------------------------
 void MyHandleNoteOn(byte channel, byte pitch, byte velocity) {
-  // int boxSize = map(velocity, 0, 127, 1, 4);
-  // lightAllLedMatrix();
-
-  int imgBrightess = map(velocity, 0, 127, 0, 16);
-  ledMatrix.setIntensity(0, imgBrightess);
-
   int imgIdx = map(pitch, 0, 127, 0, IMAGES_LEN - 1);
   uint64_t matrixImage;
   memcpy_P(&matrixImage, &IMAGES[imgIdx], 8);
@@ -115,6 +114,15 @@ void displayImage(uint64_t image) {
     for (int j = 0; j < 8; j++) {
       ledMatrix.setLed(0, i, j, bitRead(row, j));
     }
+  }
+}
+
+void playAnimation() {
+  for(int imgIdx = 0; imgIdx<IMAGES_LEN; imgIdx++){
+    uint64_t matrixImage;
+    memcpy_P(&matrixImage, &IMAGES[imgIdx], 8);
+    displayImage(matrixImage);
+    delay(200);
   }
 }
 // ------------------------------------------------------------
