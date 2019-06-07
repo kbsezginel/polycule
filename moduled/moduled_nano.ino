@@ -69,12 +69,8 @@ void loop() {
   // Read MIDI
   MIDI.read();
 
-//  lightLedRing(i, colorIdx);
-//  colorIdx += 21;
-//  delay(delayVal);
-
-  setLEDIntensity();
-  setDelay();
+  setKnob1();
+  setKnob2();
 }
 // -------------------------------------------------------
 
@@ -95,6 +91,22 @@ void MyHandleNoteOn(byte channel, byte pitch, byte velocity) {
 void MyHandleNoteOff(byte channel, byte pitch, byte velocity) {
   ledMatrix.clearDisplay(0);
 }
+// KNOB FUNCTIONS -----------------------------------------------
+void setKnob1() {
+  // Sets LED brightness
+  int potRead = analogRead(potPin1);
+  intensityVal = map(potRead, 0, 1023, 0, 16);
+  ledMatrix.setIntensity(0, intensityVal);
+  intensityVal = map(potRead, 0, 1023, 1, 127);
+  ledRing.setBrightness(intensityVal);
+}
+
+void setKnob2() {
+  // Sets LED Ring Color
+  int potRead = analogRead(potPin2);
+  colorIdx = map(potRead, 0, 1023, 0, 255);
+}
+
 // --------------------------------------------------------------
 // LED MATRIX FUNCTIONS -----------------------------------------
 void displayImage(uint64_t image) {
@@ -104,14 +116,6 @@ void displayImage(uint64_t image) {
       ledMatrix.setLed(0, i, j, bitRead(row, j));
     }
   }
-}
-
-void setLEDIntensity(){
-  int intensityRead = analogRead(potPin1);
-  intensityVal = map(intensityRead, 0, 1023, 0, 16);
-  ledMatrix.setIntensity(0, intensityVal);
-  intensityVal = map(intensityRead, 0, 1023, 1, 127);
-  ledRing.setBrightness(intensityVal);
 }
 // ------------------------------------------------------------
 // LED RING FUNCTIONS ----------------------------------------
@@ -150,10 +154,3 @@ uint32_t colorWheel(byte WheelPos) {
   }
 }
 // -----------------------------------------------------------
-void setDelay(){
-  int delayRead = analogRead(potPin2);
-  delayVal = map(delayRead, 0, 1023, 0, 1000);
-  if (delayVal > 50) {
-    delay(delayVal);
-  }
-}
