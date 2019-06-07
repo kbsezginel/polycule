@@ -22,9 +22,7 @@ const int switchPin = 2;
 const int buttonPin1 = 2;
 const int buttonPin2 = 20;
 // ------------------------------- LED MATRIX SETUP ---------------------------------
-// pin 12 is connected to the DataIn (1)
-// pin 11 is connected to the CLK  (2)
-// pin 10 is connected to LOAD (3)
+// 1) DIN (Pin 12) | 2) CLK (PIN 11) | 3) LOAD or CS (PIN 10)
 LedControl ledMatrix = LedControl(12,11,10,1);
 
 
