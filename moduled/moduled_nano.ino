@@ -7,9 +7,9 @@
 // ---------------------------------- MIDI SETUP ------------------------------------
 MIDI_CREATE_DEFAULT_INSTANCE();
 // ---------------------------- NEOPIXEL LED RING SETUP -----------------------------
-#define PIN            5
-#define NUMPIXELS      8
-Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+const int ledRingPin = 5;
+const int ledRingPixels = 8;
+Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(ledRingPixels, ledRingPin, NEO_GRB + NEO_KHZ800);
 int colorIdx = 0;
 // ----------------------------- POTENTIOMETER SETUP --------------------------------
 const int potPin1 = 4;
@@ -54,7 +54,7 @@ void setup() {
   MIDI.begin(15);
   MIDI.setHandleNoteOn(MyHandleNoteOn);
   MIDI.setHandleNoteOff(MyHandleNoteOff);
-  
+
   ledMatrix.clearDisplay(0);
   ledMatrix.shutdown(0, false);
   ledMatrix.setIntensity(0, 10);
@@ -71,10 +71,10 @@ int i = 0;
 void loop() {
   // Read MIDI
   MIDI.read();
-  
+
 //  lightLedRing(i, colorIdx);
 //  colorIdx += 21;
-//  delay(delayVal); 
+//  delay(delayVal);
 
   setLEDIntensity();
   setDelay();
@@ -83,9 +83,9 @@ void loop() {
 
 // MIDI FUNCTIONS -----------------------------------------------
 void MyHandleNoteOn(byte channel, byte pitch, byte velocity) {
-  // int boxSize = map(velocity, 0, 127, 1, 4); 
+  // int boxSize = map(velocity, 0, 127, 1, 4);
   // lightAllLedMatrix();
-  
+
   int imgBrightess = map(velocity, 0, 127, 0, 16);
   ledMatrix.setIntensity(0, imgBrightess);
 
@@ -95,7 +95,7 @@ void MyHandleNoteOn(byte channel, byte pitch, byte velocity) {
   displayImage(matrixImage);
 }
 
-void MyHandleNoteOff(byte channel, byte pitch, byte velocity) { 
+void MyHandleNoteOff(byte channel, byte pitch, byte velocity) {
   ledMatrix.clearDisplay(0);
 }
 // --------------------------------------------------------------
@@ -119,7 +119,7 @@ void setLEDIntensity(){
 // ------------------------------------------------------------
 // LED RING FUNCTIONS ----------------------------------------
 void clearLedRing() {
-  for( int i = 0; i<NUMPIXELS; i++){
+  for( int i = 0; i<ledRingPixels; i++){
     ledRing.setPixelColor(i, 0x000000);
     ledRing.show();
   }
@@ -130,7 +130,7 @@ void lightLedRing(int nPixels, int colorIdx) {
     // pixels.Color takes RGB values, from 0,0,0 up to 255,255,255
     // pixels.setPixelColor(i, pixels.Color(0,150,0)); // Moderately bright green color.
     ledRing.setPixelColor(i, colorWheel(colorIdx));
-    ledRing.show(); // This sends the updated pixel color to the hardware.   
+    ledRing.show(); // This sends the updated pixel color to the hardware.
   }
 }
 
