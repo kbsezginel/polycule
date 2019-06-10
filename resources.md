@@ -9,3 +9,6 @@
 
 ### Arduino Basics
 - [3-way toggle switch](http://fritzing.org/projects/3-way-rocker-switch-led-control-tutorial)
+
+### Arduino MIDI Input
+- [Arduino MIDI input tutorial](https://www.notesandvolts.com/2015/02/midi-and-arduino-build-midi-input.html)
