@@ -21,6 +21,7 @@ const int switchPin = 6;
 // -------------------------------- BUTTON SETUP ------------------------------------
 const int buttonPin1 = 4;
 const int buttonPin2 = 8;
+const int buttonDelay = 150;  // Wait in between button presses to avoid jumping
 // ------------------------------- LED MATRIX SETUP ---------------------------------
 // 1) DIN (Pin 12) | 2) CLK (PIN 11) | 3) LOAD or CS (PIN 10)
 LedControl ledMatrix = LedControl(12,11,10,1);
@@ -105,9 +106,11 @@ int gAnimIndex = 0;
 // >x< SETUP >x<
 // ----------------------------------------------------------------------------------
 void setup() {
-  MIDI.begin(15);
-  MIDI.setHandleNoteOn(MyHandleNoteOn);
-  MIDI.setHandleNoteOff(MyHandleNoteOff);
+  Serial.begin(9600);
+  
+  // MIDI.begin(15);
+  // MIDI.setHandleNoteOn(MyHandleNoteOn);
+  // MIDI.setHandleNoteOff(MyHandleNoteOff);
 
   ledMatrix.clearDisplay(0);
   ledMatrix.shutdown(0, false);
@@ -169,10 +172,12 @@ bool setAnimationIndex() {
   if (digitalRead(buttonPin1) == HIGH){
     gAnimIndex -= 1;
     animChange = true;
+    delay(buttonDelay);
   }
   if (digitalRead(buttonPin2) == HIGH){
     gAnimIndex += 1;
     animChange = true;
+    delay(buttonDelay);
   }
   if (gAnimIndex > NUMANIMATIONS - 1 || gAnimIndex < 0){
     gAnimIndex = 0;
@@ -200,7 +205,7 @@ void playAnimation() {
     if (setAnimationIndex()) {
       break;
     }
-    
+
 //    int ledStartIndex = 0;
 //    if (ledCounter > ledRingPixels) {
 //      ledCounter = 1;
