@@ -24,11 +24,12 @@ const int buttonPin2 = 8;
 // ------------------------------- LED MATRIX SETUP ---------------------------------
 // 1) DIN (Pin 12) | 2) CLK (PIN 11) | 3) LOAD or CS (PIN 10)
 LedControl ledMatrix = LedControl(12,11,10,1);
-
-// CROSS BIG TO SMALL ANIMATION
-const uint64_t ANIM1[] PROGMEM = {
-  0xffc3a59999a5c3ff,
-  0x8142241818244281,
+// ----------------------------------------------------------------------------------
+// ~ ~ ~ ANIMATIONS ~ ~ ~
+// ----------------------------------------------------------------------------------
+const uint64_t ANIMATIONS[] = {
+  0xffc3a59999a5c3ff,  // ANIM 1 | Start: 0 | Frames: 12
+  0x8142241818244281,  // CROSS BIG TO SMALL ANIMATION
   0x0042241818244200,
   0x0000241818240000,
   0x0000001818000000,
@@ -38,13 +39,9 @@ const uint64_t ANIM1[] PROGMEM = {
   0x0000241818240000,
   0x0042241818244200,
   0x8142241818244281,
-  0xffc3a59999a5c3ff
-};
-
-// FILLING CIRCLES
-const uint64_t ANIM2[] PROGMEM = {
-  0x0000001818000000,
-  0x0000182424180000,
+  0xffc3a59999a5c3ff,
+  0x0000001818000000,  // ANIM 2 | Start: 12 | Frames: 11
+  0x0000182424180000,  // FILLING CIRCLES
   0x003c424242423c00,
   0x7e8181818181817e,
   0x7e8181999981817e,
@@ -53,19 +50,60 @@ const uint64_t ANIM2[] PROGMEM = {
   0x7ebdc3c3c3c3bd7e,
   0x7ebdc3dbdbc3bd7e,
   0x7ebddbe7e7dbbd7e,
-  0x7ebddbffffdbbd7e
+  0x7ebddbffffdbbd7e,
+  0x0000001818000000,  // ANIM 3 | Start: 23 | Frames: 16
+  0x0000182424180000,  // PHARMACY
+  0x0018186666181800,
+  0x181818e7e7181818,
+  0x991818e7e7181899,
+  0xdbdb18e7e718dbdb,
+  0xffffffe7e7ffffff,
+  0xffffffffffffffff,
+  0xffffffffffffffff,
+  0xffffffe7e7ffffff,
+  0xdbdb18e7e718dbdb,
+  0x991818e7e7181899,
+  0x181818e7e7181818,
+  0x0018186666181800,
+  0x0000182424180000,
+  0x0000001818000000,
+  0x0100000000000000,  // ANIM 4 | Start: 39 | Frames: 28
+  0x0101000000000000,  // CIRCLING BOX
+  0x0101010000000000,
+  0x0101010100000000,
+  0x0101010101000000,
+  0x0101010101010000,
+  0x0101010101010100,
+  0x0101010101010101,
+  0x0101010101010103,
+  0x0101010101010107,
+  0x010101010101010f,
+  0x010101010101011f,
+  0x010101010101013f,
+  0x010101010101017f,
+  0x01010101010101ff,
+  0x01010101010181ff,
+  0x01010101018181ff,
+  0x01010101818181ff,
+  0x01010181818181ff,
+  0x01018181818181ff,
+  0x01818181818181ff,
+  0x81818181818181ff,
+  0xc1818181818181ff,
+  0xe1818181818181ff,
+  0xf1818181818181ff,
+  0xf9818181818181ff,
+  0xfd818181818181ff,
+  0xff818181818181ff
 };
 
-// const long ANIMATIONS[2][15] PROGMEM = {ANIM1, ANIM2};
-int animIndex = 0;
-int animSize = sizeof(ANIM1);
-uint64_t matrixImage;
-// uint64_t ANIMATION[];
-
-// const int IMAGES_LEN = sizeof(IMAGES)/8;
-
-
-// SETUP ---------------------------------------------------
+const int NUMFRAMES[] = {12, 11, 16, 28};
+const int ANIMSTART[] = {0, 12, 23, 39};
+const int NUMANIMATIONS = 4;
+int gAnimIndex = 0;
+// ----------------------------------------------------------------------------------
+// >x< SETUP >x<
+// ----------------------------------------------------------------------------------
 void setup() {
   MIDI.begin(15);
   MIDI.setHandleNoteOn(MyHandleNoteOn);
@@ -75,50 +113,42 @@ void setup() {
   ledMatrix.shutdown(0, false);
   ledMatrix.setIntensity(0, 10);
 
-  ledRing.begin(); // This initializes the NeoPixel library.
+  ledRing.begin();
   ledRing.setBrightness(50);  // btw 0 - 127
 
   pinMode(switchPin, INPUT);
   pinMode(buttonPin1, INPUT);
   pinMode(buttonPin2, INPUT);
 }
-// -------------------------------------------------------
-// LOOP -----------------------------------------------
+// ----------------------------------------------------------------------------------
+// oOo LOOP oOo
+// ----------------------------------------------------------------------------------
 int ledCounter = 0;
 void loop() {
-
   if (digitalRead(switchPin) == HIGH) {
     // Read MIDI
     MIDI.read();
   } else {
-    setAnimation();
     playAnimation();
-    animIndex += 1;
-    if (animIndex > 1) {
-      animIndex = 0;
-    }
   }
-
+  setAnimationIndex();
   setKnob1();
   setKnob2();
-
 }
-// -------------------------------------------------------
-
-// MIDI FUNCTIONS -----------------------------------------------
+// ----------------------------------------------------------------------------------
+// MIDI FUNCTIONS
+// ----------------------------------------------------------------------------------
 void MyHandleNoteOn(byte channel, byte pitch, byte velocity) {
-  uint64_t ANIMATION[animSize] = {setAnimation()};
-  int IMAGES_LEN = sizeof(ANIMATION)/8;
-  int imgIdx = map(pitch, 0, 127, 0, IMAGES_LEN - 1);
-  uint64_t matrixImage;
-  memcpy_P(&matrixImage, &ANIMATION[imgIdx], 8);
-  displayImage(matrixImage);
+  int imgIdx = map(pitch, 0, 127, ANIMSTART[gAnimIndex], NUMFRAMES[gAnimIndex] - 1);
+  displayImage(ANIMATIONS[imgIdx]);
 }
 
 void MyHandleNoteOff(byte channel, byte pitch, byte velocity) {
   ledMatrix.clearDisplay(0);
 }
-// KNOB FUNCTIONS -----------------------------------------------
+// ----------------------------------------------------------------------------------
+// KNOB FUNCTIONS
+// ----------------------------------------------------------------------------------
 void setKnob1() {
   // Sets LED brightness
   int potRead = analogRead(potPin1);
@@ -134,8 +164,24 @@ void setKnob2() {
   colorIdx = map(potRead, 0, 1023, 0, 232);
 }
 
-// --------------------------------------------------------------
-// LED MATRIX FUNCTIONS -----------------------------------------
+bool setAnimationIndex() {
+  bool animChange = false;
+  if (digitalRead(buttonPin1) == HIGH){
+    gAnimIndex -= 1;
+    animChange = true;
+  }
+  if (digitalRead(buttonPin2) == HIGH){
+    gAnimIndex += 1;
+    animChange = true;
+  }
+  if (gAnimIndex > NUMANIMATIONS - 1 || gAnimIndex < 0){
+    gAnimIndex = 0;
+  }
+  return animChange;
+}
+// ----------------------------------------------------------------------------------
+// LED MATRIX FUNCTIONS
+// ----------------------------------------------------------------------------------
 void displayImage(uint64_t image) {
   for (int i = 0; i < 8; i++) {
     byte row = (image >> i * 8) & 0xFF;
@@ -145,23 +191,16 @@ void displayImage(uint64_t image) {
   }
 }
 
-uint64_t setAnimation() {
-   switch(animIndex){
-      case 0: animSize = sizeof(ANIM1); return ANIM1; break;
-      case 1: animSize = sizeof(ANIM2); return ANIM2; break;
-  }
-}
-
 void playAnimation() {
-  uint64_t ANIMATION[animSize] = {setAnimation()};
-  int IMAGES_LEN = sizeof(ANIMATION)/8;
-  for(int imgIdx = 0; imgIdx<IMAGES_LEN; imgIdx++){
-    uint64_t matrixImage;
-    memcpy_P(&matrixImage, &ANIMATION[imgIdx], 8);
-    displayImage(matrixImage);
-    delay(200);
+  for(int imgIdx = ANIMSTART[gAnimIndex]; imgIdx<ANIMSTART[gAnimIndex] + NUMFRAMES[gAnimIndex]; imgIdx++){
+    displayImage(ANIMATIONS[imgIdx]);
+    delay(100);
     setKnob1();
     setKnob2();
+    if (setAnimationIndex()) {
+      break;
+    }
+    
 //    int ledStartIndex = 0;
 //    if (ledCounter > ledRingPixels) {
 //      ledCounter = 1;
@@ -170,11 +209,11 @@ void playAnimation() {
 //    }
 //    lightLedRing(ledStartIndex, ledCounter, colorIdx);
 //    ledCounter += 1;
-    ledAnim(1, 50, 8, colorWheel(colorIdx), true);
+    // ledAnim(1, 50, 8, colorWheel(colorIdx), true);
   }
 }
-// ------------------------------------------------------------
-// LED RING FUNCTIONS ----------------------------------------
+// ----------------------------------------------------------------------------------
+// LED RING FUNCTIONS ---------------------------------------------------------------
 void clearLedRing() {
   for( int i = 0; i<ledRingPixels; i++){
     ledRing.setPixelColor(i, 0x000000);
@@ -209,7 +248,6 @@ uint32_t colorWheel(byte WheelPos) {
     default: return ledRing.Color(0, 0, 0); break;
   }
 }
-// -----------------------------------------------------------
 // ----------------------------------------------------------------------------------
 // LED Color Dim
 // ----------------------------------------------------------------------------------
