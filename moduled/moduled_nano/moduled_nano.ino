@@ -10,12 +10,12 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 const byte LED_RING_PIN = 13;
 const byte NUM_PIXELS = 8;
 Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(NUM_PIXELS, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
-byte colorIdx = 0;
+byte gColorIdx = 0;
 // ----------------------------- POTENTIOMETER SETUP --------------------------------
 const byte POT_PIN_1 = 6;
 const byte POT_PIN_2 = 4;
-int intensityVal;
-int delayVal = 100;
+int gPotVal1 = 500;
+int gPotVal2 = 500;
 // -------------------------------- SWITCH SETUP ------------------------------------
 const byte SWITCH_PIN = 6;
 // -------------------------------- BUTTON SETUP ------------------------------------
@@ -124,7 +124,7 @@ void setup() {
   pinMode(BUTTON_PIN_1, INPUT);
   pinMode(BUTTON_PIN_2, INPUT);
 
-  ledAnim(3, 50, 8, colorWheel(colorIdx), true);
+  ledAnim(3, 50, 8, colorWheel(gColorIdx), true);
 }
 // ----------------------------------------------------------------------------------
 // oOo LOOP oOo
@@ -147,7 +147,7 @@ void loop() {
 void MyHandleNoteOn(byte channel, byte pitch, byte velocity) {
   int imgIdx = map(pitch, 0, 127, ANIM_START[gAnimIndex], NUM_FRAMES[gAnimIndex] - 1);
   displayImage(ANIMATIONS[imgIdx]);
-  lightLedRing(0, map(pitch, 0, 127, 0, NUM_PIXELS), colorIdx);
+  lightLedRing(0, map(pitch, 0, 127, 0, NUM_PIXELS), gColorIdx);
 }
 
 void MyHandleNoteOff(byte channel, byte pitch, byte velocity) {
@@ -167,7 +167,7 @@ void MyCCFunction(byte channel, byte number, byte value) {
       ledRing.setBrightness(value);
       break;
     case 25:
-      colorIdx = value * 2;
+      gColorIdx = value * 2;
       break;
   }
 }
@@ -177,20 +177,26 @@ void MyCCFunction(byte channel, byte number, byte value) {
 void setKnob1() {
   // Sets LED brightness or Anim speed
   int potRead = analogRead(POT_PIN_1);
-  if (gMidiMode) {
-    intensityVal = map(potRead, 0, 1023, 0, 16);
-    ledMatrix.setIntensity(0, intensityVal);
-    intensityVal = map(potRead, 0, 1023, 1, 127);
-    ledRing.setBrightness(intensityVal);
-  } else {
-    gAnimDelay = map(potRead, 0, 1023, 10, 1000);
+  // Change value only if current read is different than previous set value
+  if (abs(gPotVal1 - potRead) > 10) {
+    if (gMidiMode) {
+      byte intensityVal = map(potRead, 0, 1023, 0, 16);
+      ledMatrix.setIntensity(0, intensityVal);
+      intensityVal = map(potRead, 0, 1023, 1, 127);
+      ledRing.setBrightness(intensityVal);
+    } else {
+      gAnimDelay = map(potRead, 0, 1023, 10, 1000);
+    }
   }
 }
 
 void setKnob2() {
   // Sets LED Ring Color
   int potRead = analogRead(POT_PIN_2);
-  colorIdx = map(potRead, 0, 1023, 0, 255);
+  // Change value only if current read is different than previous set value
+  if (abs(gPotVal2 - potRead) > 5) {
+    gColorIdx = map(potRead, 0, 1023, 0, 255);
+  }
 }
 
 bool setAnimationIndex() {
@@ -231,8 +237,8 @@ void playAnimation() {
     if (setAnimationIndex()) {
       break;
     }
-    lightLedRing(0, 8, colorIdx);
-    // ledAnim(1, 50, 8, colorWheel(colorIdx), true);
+    lightLedRing(0, 8, gColorIdx);
+    // ledAnim(1, 50, 8, colorWheel(gColorIdx), true);
   }
 }
 // ----------------------------------------------------------------------------------
