@@ -12,3 +12,7 @@
 
 ### Arduino MIDI Input
 - [Arduino MIDI input tutorial](https://www.notesandvolts.com/2015/02/midi-and-arduino-build-midi-input.html)
+
+### Arduino Ideas
+- [Digital to Analog Conversion - CV Stuff](https://blog.reigndesign.com/blog/from-bytes-to-beats-digital-to-analog-conversion-using-as3-arduino/)
+- [Arduino CV Sequencer](https://code.google.com/archive/p/cvairsequencer/)
