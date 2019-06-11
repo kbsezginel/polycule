@@ -7,21 +7,21 @@
 // ---------------------------------- MIDI SETUP ------------------------------------
 MIDI_CREATE_DEFAULT_INSTANCE();
 // ---------------------------- NEOPIXEL LED RING SETUP -----------------------------
-const int ledRingPin = 13;
-const int ledRingPixels = 8;
-Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(ledRingPixels, ledRingPin, NEO_GRB + NEO_KHZ800);
-int colorIdx = 0;
+const byte LED_RING_PIN = 13;
+const byte NUM_PIXELS = 8;
+Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(NUM_PIXELS, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
+byte colorIdx = 0;
 // ----------------------------- POTENTIOMETER SETUP --------------------------------
-const int potPin1 = 6;
-const int potPin2 = 4;
+const byte POT_PIN_1 = 6;
+const byte POT_PIN_2 = 4;
 int intensityVal;
 int delayVal = 100;
 // -------------------------------- SWITCH SETUP ------------------------------------
-const int switchPin = 6;
+const byte SWITCH_PIN = 6;
 // -------------------------------- BUTTON SETUP ------------------------------------
-const int buttonPin1 = 4;
-const int buttonPin2 = 8;
-const int buttonDelay = 150;  // Wait in between button presses to avoid jumping
+const byte BUTTON_PIN_1 = 4;
+const byte BUTTON_PIN_2 = 8;
+const byte BUTTON_DELAY = 150;  // Wait in between button presses to avoid jumping
 // ------------------------------- LED MATRIX SETUP ---------------------------------
 // 1) DIN (Pin 12) | 2) CLK (PIN 11) | 3) LOAD or CS (PIN 10)
 LedControl ledMatrix = LedControl(12,11,10,1);
@@ -98,17 +98,16 @@ const uint64_t ANIMATIONS[] = {
   0xff818181818181ff
 };
 
-const int NUMFRAMES[] = {12, 11, 16, 28};
-const int ANIMSTART[] = {0, 12, 23, 39};
-const int NUMANIMATIONS = 4;
+const int NUM_FRAMES[] = {12, 11, 16, 28};
+const int ANIM_START[] = {0, 12, 23, 39};
+const byte NUM_ANIMATIONS = 4;
 int gAnimDelay = 100;
-int gAnimIndex = 0;
+byte gAnimIndex = 0;
 bool gMidiMode = false;
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
 // ----------------------------------------------------------------------------------
 void setup() {
-
   MIDI.begin(15);
   MIDI.setHandleNoteOn(MyHandleNoteOn);
   MIDI.setHandleNoteOff(MyHandleNoteOff);
@@ -121,15 +120,17 @@ void setup() {
   ledRing.begin();
   ledRing.setBrightness(50);  // btw 0 - 127
 
-  pinMode(switchPin, INPUT);
-  pinMode(buttonPin1, INPUT);
-  pinMode(buttonPin2, INPUT);
+  pinMode(SWITCH_PIN, INPUT);
+  pinMode(BUTTON_PIN_1, INPUT);
+  pinMode(BUTTON_PIN_2, INPUT);
+
+  ledAnim(3, 50, 8, colorWheel(colorIdx), true);
 }
 // ----------------------------------------------------------------------------------
 // oOo LOOP oOo
 // ----------------------------------------------------------------------------------
 void loop() {
-  if (digitalRead(switchPin) == HIGH) {
+  if (digitalRead(SWITCH_PIN) == HIGH) {
     gMidiMode = true;
     MIDI.read();
     setKnob1();
@@ -144,18 +145,20 @@ void loop() {
 // MIDI FUNCTIONS
 // ----------------------------------------------------------------------------------
 void MyHandleNoteOn(byte channel, byte pitch, byte velocity) {
-  int imgIdx = map(pitch, 0, 127, ANIMSTART[gAnimIndex], NUMFRAMES[gAnimIndex] - 1);
+  int imgIdx = map(pitch, 0, 127, ANIM_START[gAnimIndex], NUM_FRAMES[gAnimIndex] - 1);
   displayImage(ANIMATIONS[imgIdx]);
+  lightLedRing(0, map(pitch, 0, 127, 0, NUM_PIXELS), colorIdx);
 }
 
 void MyHandleNoteOff(byte channel, byte pitch, byte velocity) {
   ledMatrix.clearDisplay(0);
+  clearLedRing();
 }
 
 void MyCCFunction(byte channel, byte number, byte value) {
   switch (number) {
     case 22:
-      gAnimIndex = map(value, 0, 127, 0, NUMANIMATIONS - 1);
+      gAnimIndex = map(value, 0, 127, 0, NUM_ANIMATIONS - 1);
       break;
     case 23:
       ledMatrix.setIntensity(0, map(value, 0, 127, 0, 16));
@@ -173,7 +176,7 @@ void MyCCFunction(byte channel, byte number, byte value) {
 // ----------------------------------------------------------------------------------
 void setKnob1() {
   // Sets LED brightness or Anim speed
-  int potRead = analogRead(potPin1);
+  int potRead = analogRead(POT_PIN_1);
   if (gMidiMode) {
     intensityVal = map(potRead, 0, 1023, 0, 16);
     ledMatrix.setIntensity(0, intensityVal);
@@ -186,23 +189,23 @@ void setKnob1() {
 
 void setKnob2() {
   // Sets LED Ring Color
-  int potRead = analogRead(potPin2);
+  int potRead = analogRead(POT_PIN_2);
   colorIdx = map(potRead, 0, 1023, 0, 255);
 }
 
 bool setAnimationIndex() {
   bool animChange = false;
-  if (digitalRead(buttonPin1) == HIGH){
+  if (digitalRead(BUTTON_PIN_1) == HIGH){
     gAnimIndex -= 1;
     animChange = true;
-    delay(buttonDelay);
+    delay(BUTTON_DELAY);
   }
-  if (digitalRead(buttonPin2) == HIGH){
+  if (digitalRead(BUTTON_PIN_2) == HIGH){
     gAnimIndex += 1;
     animChange = true;
-    delay(buttonDelay);
+    delay(BUTTON_DELAY);
   }
-  if (gAnimIndex > NUMANIMATIONS - 1 || gAnimIndex < 0){
+  if (gAnimIndex > NUM_ANIMATIONS - 1 || gAnimIndex < 0){
     gAnimIndex = 0;
   }
   return animChange;
@@ -220,7 +223,7 @@ void displayImage(uint64_t image) {
 }
 
 void playAnimation() {
-  for(int imgIdx = ANIMSTART[gAnimIndex]; imgIdx<ANIMSTART[gAnimIndex] + NUMFRAMES[gAnimIndex]; imgIdx++){
+  for(int imgIdx = ANIM_START[gAnimIndex]; imgIdx<ANIM_START[gAnimIndex] + NUM_FRAMES[gAnimIndex]; imgIdx++){
     displayImage(ANIMATIONS[imgIdx]);
     delay(gAnimDelay);
     setKnob1();
@@ -236,7 +239,7 @@ void playAnimation() {
 // LED RING FUNCTIONS
 // ----------------------------------------------------------------------------------
 void clearLedRing() {
-  for( int i = 0; i<ledRingPixels; i++){
+  for(int i = 0; i<NUM_PIXELS; i++){
     ledRing.setPixelColor(i, 0x000000);
     ledRing.show();
   }
@@ -268,10 +271,10 @@ uint32_t dimColor(uint32_t color, uint8_t width) {
 
 // LED Animation (KnightRider)
 void ledAnim(uint16_t cycles, uint16_t speed, uint8_t width, uint32_t color, bool clearAll) {
-  uint32_t old_val[ledRingPixels]; // up to 256 lights!
+  uint32_t old_val[NUM_PIXELS]; // up to 256 lights!
   // Larson time baby!
   for(int i = 0; i < cycles; i++){
-    for (int count = 0; count<ledRingPixels + 1; count++) {
+    for (int count = 0; count<NUM_PIXELS + 1; count++) {
       ledRing.setPixelColor(count, color);
       old_val[count] = color;
       for(int x = count; x>0; x--) {
@@ -281,16 +284,16 @@ void ledAnim(uint16_t cycles, uint16_t speed, uint8_t width, uint32_t color, boo
       ledRing.show();
       delay(speed);
     }
-//    for (int count = ledRingPixels-1; count>=0; count--) {
-//      ledRing.setPixelColor(count, color);
-//      old_val[count] = color;
-//      for(int x = count; x<=ledRingPixels ;x++) {
-//        old_val[x-1] = dimColor(old_val[x-1], width);
-//        ledRing.setPixelColor(x+1, old_val[x+1]);
-//      }
-//      ledRing.show();
-//      delay(speed);
-//    }
+   for (int count = NUM_PIXELS-1; count>=0; count--) {
+     ledRing.setPixelColor(count, color);
+     old_val[count] = color;
+     for(int x = count; x<=NUM_PIXELS ;x++) {
+       old_val[x-1] = dimColor(old_val[x-1], width);
+       ledRing.setPixelColor(x+1, old_val[x+1]);
+     }
+     ledRing.show();
+     delay(speed);
+   }
   }
   if (clearAll){
     void clearLedRing();
