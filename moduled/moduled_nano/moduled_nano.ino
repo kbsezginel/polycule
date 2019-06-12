@@ -6,6 +6,7 @@
 #include <Adafruit_NeoPixel.h>
 // ---------------------------------- MIDI SETUP ------------------------------------
 MIDI_CREATE_DEFAULT_INSTANCE();
+const byte MIDI_CHANNEL = 15;
 // ---------------------------- NEOPIXEL LED RING SETUP -----------------------------
 const byte LED_RING_PIN = 13;
 const byte NUM_PIXELS = 8;
@@ -21,7 +22,7 @@ const byte SWITCH_PIN = 6;
 // -------------------------------- BUTTON SETUP ------------------------------------
 const byte BUTTON_PIN_1 = 4;
 const byte BUTTON_PIN_2 = 8;
-const byte BUTTON_DELAY = 150;  // Wait in between button presses to avoid jumping
+const byte BUTTON_DELAY = 250;  // Wait in between button presses to avoid jumping
 // ------------------------------- LED MATRIX SETUP ---------------------------------
 // 1) DIN (Pin 12) | 2) CLK (PIN 11) | 3) LOAD or CS (PIN 10)
 LedControl ledMatrix = LedControl(12,11,10,1);
@@ -102,13 +103,13 @@ const int NUM_FRAMES[] = {12, 11, 16, 28};
 const int ANIM_START[] = {0, 12, 23, 39};
 const byte NUM_ANIMATIONS = 4;
 int gAnimDelay = 100;
-byte gAnimIndex = 0;
+int gAnimIndex = 0;
 bool gMidiMode = false;
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
 // ----------------------------------------------------------------------------------
 void setup() {
-  MIDI.begin(15);
+  MIDI.begin(MIDI_CHANNEL);
   MIDI.setHandleNoteOn(MyHandleNoteOn);
   MIDI.setHandleNoteOff(MyHandleNoteOff);
   MIDI.setHandleControlChange(MyCCFunction);
@@ -211,8 +212,10 @@ bool setAnimationIndex() {
     animChange = true;
     delay(BUTTON_DELAY);
   }
-  if (gAnimIndex > NUM_ANIMATIONS - 1 || gAnimIndex < 0){
+  if (gAnimIndex > NUM_ANIMATIONS - 1) {
     gAnimIndex = 0;
+  } else if (gAnimIndex < 0) {
+    gAnimIndex = NUM_ANIMATIONS - 1;
   }
   return animChange;
 }
