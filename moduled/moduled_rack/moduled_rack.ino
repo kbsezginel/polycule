@@ -43,6 +43,10 @@ int gPotVal = 500;
 float delayTime = 60.0 / bpm * 1000.0;
 int delayTimeInt = delayTime;
 byte ledCounter = 0;
+unsigned long currentTime;
+unsigned long timeDelta1 = delayTime;
+unsigned long timeDelta2 = delayTime;
+
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
@@ -68,20 +72,29 @@ void setup() {
   // Display static text
   display.println("MODULED!");
   display.display();
-  delay(2000);
+  delay(1000);
 }
 
 void loop() {
   setBPM();
   printDisplay();
   
-  lightLedRing1(0, ledCounter, gColorIdx);
-  lightLedRing2(0, ledCounter, gColorIdx);
-  digitalWrite(LED_PIN, HIGH);
-  delay(delayTime);
-  digitalWrite(LED_PIN, LOW);
-  ledCounter += gLedStep;
-  gColorIdx += gColorStep * gLedStep;
+  // digitalWrite(LED_PIN, HIGH);
+  // delay(delayTime);
+  if (millis() - currentTime > timeDelta1){
+    lightLedRing1(0, ledCounter, gColorIdx);
+    ledCounter += gLedStep;
+    gColorIdx += gColorStep * gLedStep;
+    currentTime = millis();
+  }
+  if (millis() - currentTime > timeDelta2){
+    lightLedRing2(0, ledCounter, gColorIdx);
+    ledCounter += gLedStep;
+    gColorIdx += gColorStep * gLedStep;
+  }
+  // digitalWrite(LED_PIN, LOW);
+  
+  
   if (ledCounter > NUM_PIXELS1) {
     clearLedRing1();
     clearLedRing2();
