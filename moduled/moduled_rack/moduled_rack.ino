@@ -15,14 +15,15 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // Large LED Ring
-const byte LED_RING1_PIN = 6;
+const byte LED_RING1_PIN = 12;
 const byte NUM_PIXELS1 = 24;
 Adafruit_NeoPixel ledRing1 = Adafruit_NeoPixel(NUM_PIXELS1, LED_RING1_PIN, NEO_GRB + NEO_KHZ800);
 
 // Small LED Ring
-const byte LED_RING2_PIN = 5;
+const byte LED_RING2_PIN = 11;
 const byte NUM_PIXELS2 = 12;
 Adafruit_NeoPixel ledRing2 = Adafruit_NeoPixel(NUM_PIXELS2, LED_RING2_PIN, NEO_GRB + NEO_KHZ800);
+
 
 
 byte gColorIdx = 0;
@@ -36,20 +37,29 @@ byte gLedStep = 3;
 // SWITCH
 // Between state 1 and 2
 
-const byte POT_PIN = 3;
-const byte LED_PIN = 9;
+const byte LEFT_POT_PIN = 0;
+const byte RIGHT_POT_PIN = 1;
+
+const byte BUTTON_PIN = 3;
+const byte SWITCH_PIN = 4;
+
 int bpm = 120;
-int gPotVal = 500;
+int gLeftPotVal = 500;
+int gRightPotVal = 500;
 float delayTime = 60.0 / bpm * 1000.0;
 int delayTimeInt = delayTime;
 byte ledCounter = 0;
-unsigned long currentTime;
+unsigned long currentTime = 0.0;
+unsigned long displayTime = 0.0;
+unsigned long displayDelta = delayTime;
+
 unsigned long timeDelta1 = delayTime;
 unsigned long timeDelta2 = delayTime;
 
 
 void setup() {
-  pinMode(LED_PIN, OUTPUT);
+  pinMode(SWITCH_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT);
 
   ledRing1.begin();
   ledRing1.setBrightness(50);  // btw 0 - 127
@@ -77,39 +87,43 @@ void setup() {
 
 void loop() {
   setBPM();
+  setColor();
   printDisplay();
-  
-  // digitalWrite(LED_PIN, HIGH);
-  // delay(delayTime);
+
   if (millis() - currentTime > timeDelta1){
     lightLedRing1(0, ledCounter, gColorIdx);
-    ledCounter += gLedStep;
-    gColorIdx += gColorStep * gLedStep;
-    currentTime = millis();
   }
   if (millis() - currentTime > timeDelta2){
     lightLedRing2(0, ledCounter, gColorIdx);
     ledCounter += gLedStep;
     gColorIdx += gColorStep * gLedStep;
+    currentTime = millis();
   }
-  // digitalWrite(LED_PIN, LOW);
-  
-  
+
   if (ledCounter > NUM_PIXELS1) {
     clearLedRing1();
     clearLedRing2();
     ledCounter = gLedStep;
     gColorIdx = 0;
+    currentTime = millis();
   }
 }
 
 void setBPM() {
-  int potRead = analogRead(POT_PIN);
+  int potRead = analogRead(LEFT_POT_PIN);
   // Change value only if current read is different than previous set value
-  if (abs(gPotVal - potRead) > 20) {
+  if (abs(gLeftPotVal - potRead) > 20) {
     bpm = map(potRead, 0, 1023, 10, 300);
     delayTime = 60.0 / bpm * 1000.0;
     delayTimeInt = delayTime;
+  }
+}
+
+void setColor() {
+  int potRead = analogRead(RIGHT_POT_PIN);
+  // Change value only if current read is different than previous set value
+  if (abs(gRightPotVal - potRead) > 20) {
+    gColorIdx = map(potRead, 0, 1023, 0, 255);
   }
 }
 
@@ -125,7 +139,18 @@ void printDisplay(){
   display.println(delayTimeInt);
   display.setCursor(0, 40);
   display.setTextSize(1);
-  display.println("> > > > - - - < < < <");
+  int beatNum = ceil(millis() - displayTime) / displayDelta;
+  if (beatNum == 1){
+    display.println(">                   <");
+  } else if (beatNum == 2) {
+    display.println("> >               < <");
+  } else if (beatNum == 3) {
+    display.println("> > >           < < <");
+  } else if (beatNum == 4) {
+    display.println("> > > >   .   < < < <");
+  } else if (beatNum > 4) {
+    displayTime = millis();
+  }
   display.display();
 }
 
