@@ -9,6 +9,8 @@ navigation:
     url: one-shot
   - title: Moduled Nano
     url: moduled-nano
+  - title: Moduled Rack
+    url: moduled-rack
   - title: Resources
     url: resources
   - title: PO-24 Cheat Sheet
