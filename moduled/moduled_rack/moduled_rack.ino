@@ -48,8 +48,10 @@ int gLeftPotVal = 500;
 int gRightPotVal = 500;
 // -------------------------------- SWITCH SETUP ------------------------------------
 const byte SWITCH_PIN = 4;
+String gSwitchDisplay = " ";
 // -------------------------------- BUTTON SETUP ------------------------------------
 const byte BUTTON_PIN = 3;
+String gButtonDisplay = " ";
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
 // ----------------------------------------------------------------------------------
@@ -64,12 +66,10 @@ void setup() {
   gSmallLedRing.setBrightness(50);  // btw 0 - 127
 
   Serial.begin(115200);
-
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
     Serial.println(F("SSD1306 allocation failed"));
     for(;;);
   }
-
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(WHITE);
@@ -78,9 +78,13 @@ void setup() {
   display.display();
   delay(1000);
 }
-
+// ----------------------------------------------------------------------------------
+// >x< LOOP >x<
+// ----------------------------------------------------------------------------------
 void loop() {
   setBPM();
+  setSwitch();
+  setButton();
   setColor();
   printDisplay();
 
@@ -110,6 +114,22 @@ void loop() {
     clearLargeLedRing();
     gLargeRingCounter = gLargeRingLedStep;
     gLargeRingColor = 0;
+  }
+}
+
+void setSwitch() {
+  if (digitalRead(SWITCH_PIN) == HIGH) {
+    gSwitchDisplay = "X";
+  } else {
+    gSwitchDisplay = " ";
+  }
+}
+
+void setButton() {
+  if (digitalRead(BUTTON_PIN) == HIGH) {
+    gButtonDisplay = " ";
+  } else {
+    gButtonDisplay = "X";
   }
 }
 
@@ -163,7 +183,20 @@ void printDisplay(){
     gDisplayTime = millis();
   }
   display.setCursor(0, 50);
+  display.println("MULT: ");
+  display.setCursor(40, 50);
   display.println(gDisplayMultiplier);
+  display.setCursor(50, 50);
+  display.println("x    |");
+  display.setCursor(90, 50);
+  display.println(gButtonDisplay);
+  display.setCursor(100, 50);
+  display.println("|");
+  display.setCursor(110, 50);
+  display.println(gSwitchDisplay);
+  display.setCursor(120, 50);
+  display.println("|");
+  // display.setCursor(120, 50);
   display.display();
 }
 
