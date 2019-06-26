@@ -19,18 +19,24 @@ unsigned long gDisplayDelta = gDelayTime;
 // ------------------------------ LARGE LED RING SETUP ------------------------------
 const byte LARGE_LED_RING_PIN = 12;
 const byte NUM_PIXELS_LARGE = 24;
-Adafruit_NeoPixel ledRing1 = Adafruit_NeoPixel(NUM_PIXELS_LARGE, LARGE_LED_RING_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel gLargeLedRing = Adafruit_NeoPixel(NUM_PIXELS_LARGE, LARGE_LED_RING_PIN, NEO_GRB + NEO_KHZ800);
 unsigned long gLargeRingDelta = gDelayTime;
+unsigned long gLargeRingTime = 0.0;
+byte gLargeRingLedStep = 3;
+byte gLargeRingCounter = 0;
+byte gSmallRingColor = 0;
+byte gSmallRingColorStep = 9;
 // ------------------------------ SMALL LED RING SETUP ------------------------------
 const byte SMALL_LED_RING_PIN = 11;
 const byte NUM_PIXELS_SMALL = 12;
-Adafruit_NeoPixel ledRing2 = Adafruit_NeoPixel(NUM_PIXELS_SMALL, SMALL_LED_RING_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel gSmallLedRing = Adafruit_NeoPixel(NUM_PIXELS_SMALL, SMALL_LED_RING_PIN, NEO_GRB + NEO_KHZ800);
 unsigned long gSmallRingDelta = gDelayTime;
+unsigned long gSmallRingTime = 0.0;
+byte gSmallRingLedStep = 1;
+byte gSmallRingCounter = 0;
+byte gSmallRingColor = 0;
+byte gSmallRingColorStep = 9;
 
-byte gColorIdx = 0;
-byte gColorStep = 9;
-byte gLedStep = 3;
-byte gLedCounter = 0;
 unsigned long gCurrentTime = 0.0;
 // ----------------------------- POTENTIOMETER SETUP --------------------------------
 const byte LEFT_POT_PIN = 0;
@@ -48,11 +54,11 @@ void setup() {
   pinMode(SWITCH_PIN, INPUT);
   pinMode(BUTTON_PIN, INPUT);
 
-  ledRing1.begin();
-  ledRing1.setBrightness(50);  // btw 0 - 127
+  gLargeLedRing.begin();
+  gLargeLedRing.setBrightness(50);  // btw 0 - 127
 
-  ledRing2.begin();
-  ledRing2.setBrightness(50);  // btw 0 - 127
+  gSmallLedRing.begin();
+  gSmallLedRing.setBrightness(50);  // btw 0 - 127
 
   Serial.begin(115200);
 
@@ -74,22 +80,32 @@ void loop() {
   setColor();
   printDisplay();
 
-  if (millis() - gCurrentTime > gSmallRingDelta){
-    lightLedRing1(0, gLedCounter, gColorIdx);
-  }
-  if (millis() - gCurrentTime > gLargeRingDelta){
-    lightLedRing2(0, gLedCounter, gColorIdx);
-    gLedCounter += gLedStep;
-    gColorIdx += gColorStep * gLedStep;
-    gCurrentTime = millis();
+  gCurrentTime = millis();
+
+  if (gCurrentTime - gSmallRingTime > gSmallRingDelta){
+    lightSmallLedRing(0, gSmallRingCounter, gSmallRingColor);
+    gSmallRingTime = millis();
+    gSmallRingCounter += gSmallRingLedStep;
+    gSmallRingColor += gSmallRingColorStep * gSmallRingLedStep;
   }
 
-  if (gLedCounter > NUM_PIXELS_LARGE) {
-    clearLedRing1();
-    clearLedRing2();
-    gLedCounter = gLedStep;
-    gColorIdx = 0;
-    gCurrentTime = millis();
+  if (gCurrentTime - gLargeRingTime > gLargeRingDelta){
+    lightSmallLedRing(0, gLargeRingCounter, gLargeRingColor);
+    gLargeRingTime = millis();
+    gLargeRingCounter += gLargeRingLedStep;
+    gLargeRingColor += gLargeRingColorStep * gLargeRingLedStep;
+  }
+
+  if (gSmallRingCounter > NUM_PIXELS_SMALL) {
+    clearSmallLedRing();
+    gSmallRingCounter = gSmallRingLedStep;
+    gSmallRingColor = 0;
+  }
+
+  if (gLargeRingCounter > NUM_PIXELS_LARGE) {
+    clearLargeLedRing();
+    gLargeRingCounter = gLargeRingLedStep;
+    gLargeRingColor = 0;
   }
 }
 
@@ -107,7 +123,8 @@ void setColor() {
   int potRead = analogRead(RIGHT_POT_PIN);
   // Change value only if current read is different than previous set value
   if (abs(gRightPotVal - potRead) > 20) {
-    gColorIdx = map(potRead, 0, 1023, 0, 255);
+    gSmallRingColor = map(potRead, 0, 1023, 0, 255);
+    gLargeRingColor = map(potRead, 0, 1023, 0, 255);
   }
 }
 
@@ -123,7 +140,7 @@ void printDisplay(){
   display.println(gDelayTimeInt);
   display.setCursor(0, 40);
   display.setTextSize(1);
-  int beatNum = ceil(millis() - gDisplayTime) / gDisplayDelta;
+  int beatNum = ceil(gCurrentTime - gDisplayTime) / gDisplayDelta;
   if (beatNum == 1){
     display.println(">                   <");
   } else if (beatNum == 2) {
@@ -141,31 +158,31 @@ void printDisplay(){
 // ----------------------------------------------------------------------------------
 // LED RING FUNCTIONS
 // ----------------------------------------------------------------------------------
-void clearLedRing1() {
+void clearLargeLedRing() {
   for(int i = 0; i<NUM_PIXELS_LARGE; i++){
-    ledRing1.setPixelColor(i, 0x000000);
-    ledRing1.show();
+    gLargeLedRing.setPixelColor(i, 0x000000);
+    gLargeLedRing.show();
   }
 }
 
-void lightLedRing1(int startIndex, int nPixels, int colorIdx) {
+void lightLargeLedRing(int startIndex, int nPixels, int colorIdx) {
   for(int i=startIndex;i<startIndex+nPixels;i++){
-    ledRing1.setPixelColor(i, colorWheel(colorIdx));
-    ledRing1.show();
+    gLargeLedRing.setPixelColor(i, colorWheel(colorIdx));
+    gLargeLedRing.show();
   }
 }
 
 uint32_t colorWheel(byte WheelPos) {
   WheelPos = 255 - WheelPos;
   if(WheelPos < 85) {
-    return ledRing1.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+    return gLargeLedRing.Color(255 - WheelPos * 3, 0, WheelPos * 3);
   }
   if(WheelPos < 170) {
     WheelPos -= 85;
-    return ledRing1.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+    return gLargeLedRing.Color(0, WheelPos * 3, 255 - WheelPos * 3);
   }
   WheelPos -= 170;
-  return ledRing1.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+  return gLargeLedRing.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
 
 uint32_t dimColor(uint32_t color, uint8_t width) {
@@ -178,45 +195,45 @@ void ledAnim1(uint16_t cycles, uint16_t speed, uint8_t width, uint32_t color, bo
   // Larson time baby!
   for(int i = 0; i < cycles; i++){
     for (int count = 0; count<NUM_PIXELS_LARGE + 1; count++) {
-      ledRing1.setPixelColor(count, color);
+      gLargeLedRing.setPixelColor(count, color);
       old_val[count] = color;
       for(int x = count; x>0; x--) {
         old_val[x-1] = dimColor(old_val[x-1], width);
-        ledRing1.setPixelColor(x-1, old_val[x-1]);
+        gLargeLedRing.setPixelColor(x-1, old_val[x-1]);
       }
-      ledRing1.show();
+      gLargeLedRing.show();
       delay(speed);
     }
    for (int count = NUM_PIXELS_LARGE-1; count>=0; count--) {
-     ledRing1.setPixelColor(count, color);
+     gLargeLedRing.setPixelColor(count, color);
      old_val[count] = color;
      for(int x = count; x<=NUM_PIXELS_LARGE ;x++) {
        old_val[x-1] = dimColor(old_val[x-1], width);
-       ledRing1.setPixelColor(x+1, old_val[x+1]);
+       gLargeLedRing.setPixelColor(x+1, old_val[x+1]);
      }
-     ledRing1.show();
+     gLargeLedRing.show();
      delay(speed);
    }
   }
   if (clearAll){
-    void clearLedRing1();
+    void clearLargeLedRing();
   }
 }
 
 // ----------------------------------------------------------------------------------
 // LED RING FUNCTIONS
 // ----------------------------------------------------------------------------------
-void clearLedRing2() {
+void clearSmallLedRing() {
   for(int i = 0; i<NUM_PIXELS_SMALL; i++){
-    ledRing2.setPixelColor(i, 0x000000);
-    ledRing2.show();
+    gSmallLedRing.setPixelColor(i, 0x000000);
+    gSmallLedRing.show();
   }
 }
 
-void lightLedRing2(int startIndex, int nPixels, int colorIdx) {
+void lightSmallLedRing(int startIndex, int nPixels, int colorIdx) {
   for(int i=startIndex;i<startIndex+nPixels;i++){
-    ledRing2.setPixelColor(i, colorWheel(colorIdx));
-    ledRing2.show();
+    gSmallLedRing.setPixelColor(i, colorWheel(colorIdx));
+    gSmallLedRing.show();
   }
 }
 
@@ -226,27 +243,27 @@ void ledAnim2(uint16_t cycles, uint16_t speed, uint8_t width, uint32_t color, bo
   // Larson time baby!
   for(int i = 0; i < cycles; i++){
     for (int count = 0; count<NUM_PIXELS_SMALL + 1; count++) {
-      ledRing2.setPixelColor(count, color);
+      gSmallLedRing.setPixelColor(count, color);
       old_val[count] = color;
       for(int x = count; x>0; x--) {
         old_val[x-1] = dimColor(old_val[x-1], width);
-        ledRing2.setPixelColor(x-1, old_val[x-1]);
+        gSmallLedRing.setPixelColor(x-1, old_val[x-1]);
       }
-      ledRing2.show();
+      gSmallLedRing.show();
       delay(speed);
     }
    for (int count = NUM_PIXELS_SMALL-1; count>=0; count--) {
-     ledRing2.setPixelColor(count, color);
+     gSmallLedRing.setPixelColor(count, color);
      old_val[count] = color;
      for(int x = count; x<=NUM_PIXELS_SMALL ;x++) {
        old_val[x-1] = dimColor(old_val[x-1], width);
-       ledRing2.setPixelColor(x+1, old_val[x+1]);
+       gSmallLedRing.setPixelColor(x+1, old_val[x+1]);
      }
-     ledRing2.show();
+     gSmallLedRing.show();
      delay(speed);
    }
   }
   if (clearAll){
-    void clearLedRing2();
+    void clearSmallLedRing();
   }
 }
