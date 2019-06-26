@@ -16,6 +16,7 @@ int gDelayTimeInt = gDelayTime;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 unsigned long gDisplayTime = 0.0;
 unsigned long gDisplayDelta = gDelayTime;
+byte gDisplayMultiplier = 1;
 // ------------------------------ LARGE LED RING SETUP ------------------------------
 const byte LARGE_LED_RING_PIN = 12;
 const byte NUM_PIXELS_LARGE = 24;
@@ -24,8 +25,9 @@ unsigned long gLargeRingDelta = gDelayTime;
 unsigned long gLargeRingTime = 0.0;
 byte gLargeRingLedStep = 3;
 byte gLargeRingCounter = 0;
-byte gSmallRingColor = 0;
-byte gSmallRingColorStep = 9;
+byte gLargeRingColor = 0;
+byte gLargeRingColorStep = 9;
+byte gLargeRingMultiplier = 1;
 // ------------------------------ SMALL LED RING SETUP ------------------------------
 const byte SMALL_LED_RING_PIN = 11;
 const byte NUM_PIXELS_SMALL = 12;
@@ -36,6 +38,7 @@ byte gSmallRingLedStep = 1;
 byte gSmallRingCounter = 0;
 byte gSmallRingColor = 0;
 byte gSmallRingColorStep = 9;
+byte gSmallRingMultiplier = 1;
 
 unsigned long gCurrentTime = 0.0;
 // ----------------------------- POTENTIOMETER SETUP --------------------------------
@@ -69,6 +72,7 @@ void setup() {
 
   display.clearDisplay();
   display.setTextSize(2);
+  display.setTextColor(WHITE);
   display.setCursor(20, 20);
   display.println("MODULED!");
   display.display();
@@ -90,7 +94,7 @@ void loop() {
   }
 
   if (gCurrentTime - gLargeRingTime > gLargeRingDelta){
-    lightSmallLedRing(0, gLargeRingCounter, gLargeRingColor);
+    lightLargeLedRing(0, gLargeRingCounter, gLargeRingColor);
     gLargeRingTime = millis();
     gLargeRingCounter += gLargeRingLedStep;
     gLargeRingColor += gLargeRingColorStep * gLargeRingLedStep;
@@ -116,6 +120,9 @@ void setBPM() {
     gBpm = map(potRead, 0, 1023, 10, 300);
     gDelayTime = 60.0 / gBpm * 1000.0;
     gDelayTimeInt = gDelayTime;
+    gLargeRingDelta = gDelayTime / gLargeRingMultiplier;
+    gSmallRingDelta = gDelayTime / gSmallRingMultiplier;
+    gDisplayDelta = gDelayTime / gDisplayMultiplier;
   }
 }
 
@@ -125,6 +132,9 @@ void setColor() {
   if (abs(gRightPotVal - potRead) > 20) {
     gSmallRingColor = map(potRead, 0, 1023, 0, 255);
     gLargeRingColor = map(potRead, 0, 1023, 0, 255);
+    gDisplayMultiplier = map(potRead, 0, 1023, 1, 8);
+    gSmallRingMultiplier = map(potRead, 0, 1023, 1, 8);
+    gLargeRingMultiplier = map(potRead, 0, 1023, 1, 8);
   }
 }
 
@@ -132,26 +142,28 @@ void printDisplay(){
   display.clearDisplay();
   display.setTextSize(2);
   display.setCursor(0, 0);
-  display.println(" BPM | DLY");
+  display.println(" BPM  DLY");
   display.setTextSize(2);
   display.setCursor(10, 20);
   display.println(gBpm);
-  display.setCursor(85, 20);
+  display.setCursor(75, 20);
   display.println(gDelayTimeInt);
   display.setCursor(0, 40);
   display.setTextSize(1);
   int beatNum = ceil(gCurrentTime - gDisplayTime) / gDisplayDelta;
-  if (beatNum == 1){
+  if (beatNum == 0){
     display.println(">                   <");
-  } else if (beatNum == 2) {
+  } else if (beatNum == 1) {
     display.println("> >               < <");
-  } else if (beatNum == 3) {
+  } else if (beatNum == 2) {
     display.println("> > >           < < <");
-  } else if (beatNum == 4) {
+  } else if (beatNum == 3) {
     display.println("> > > >   .   < < < <");
-  } else if (beatNum > 4) {
+  } else if (beatNum > 3) {
     gDisplayTime = millis();
   }
+  display.setCursor(0, 50);
+  display.println(gDisplayMultiplier);
   display.display();
 }
 
