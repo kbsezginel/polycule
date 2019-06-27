@@ -73,10 +73,14 @@ void setup() {
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(WHITE);
-  display.setCursor(20, 20);
-  display.println("MODULED!");
+  display.setCursor(0, 0);
+  display.println(" MODULED ");
+  display.setCursor(0, 20);
+  display.println(" RACK    ");
+  display.setCursor(0, 40);
+  display.println("==========");
   display.display();
-  delay(1000);
+  delay(3000);
 }
 // ----------------------------------------------------------------------------------
 // >x< LOOP >x<
@@ -162,12 +166,12 @@ void printDisplay(){
   display.clearDisplay();
   display.setTextSize(2);
   display.setCursor(0, 0);
-  display.println(" BPM  DLY");
+  display.println(" BPM  CLR");
   display.setTextSize(2);
   display.setCursor(10, 20);
   display.println(gBpm);
   display.setCursor(75, 20);
-  display.println(gDelayTimeInt);
+  display.println(gSmallRingColor);
   display.setCursor(0, 40);
   display.setTextSize(1);
   int beatNum = ceil(gCurrentTime - gDisplayTime) / gDisplayDelta;
