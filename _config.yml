@@ -7,6 +7,8 @@ navigation:
     url: /
   - title: One-shot
     url: one-shot
+  - title: Microled
+    url: microled
   - title: Moduled Nano
     url: moduled-nano
   - title: Moduled Rack

@@ -1,15 +1,19 @@
+// ----------------------------------------------------------------------------------
+// POLYCULE | MICROLED | LED Animation with audio input
+// ----------------------------------------------------------------------------------
 #include <Adafruit_NeoPixel.h>
-#include <math.h>
 
 #define MIC_PIN 5
 #define LED_RING_PIN 13
-int soundLevel = 0;
+double soundLevel = 0;
 
 const byte NUM_PIXELS = 7;
 Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(NUM_PIXELS, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
 byte gColorIdx = 0;
 
-const int baseLine = 530;
+// The baseline depends on the voltage used for the mic amp
+// Use 330 for 3.3 V
+const double baseLine = 330;
 const int volMax = 300;
 int ledLevel = 0;
 int ledNum = 0;
@@ -24,18 +28,17 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   soundLevel = analogRead(MIC_PIN);
-  soundLevel = abs(soundLevel - baseLine);
-  ledLevel = map(soundLevel, 0, volMax, 30, 126);
+  soundLevel -= baseLine;
+  // ledLevel = map(soundLevel, 0, volMax, 30, 126);
+  //  ledRing.setBrightness(ledLevel);
+  //  ledRing.show();
   ledNum = map(soundLevel, 0, volMax, 1, 7);
-  ledRing.setBrightness(ledLevel);
-  ledRing.show();
   lightLedRing(0, ledNum, 0);
-  
-  Serial.print("\nMIC val: ");
-  Serial.print(ledLevel);
-  delay(100);
+  Serial.print('\n');
+  Serial.print(soundLevel);
+  delay(50);
   clearLedRing();
-  delay(100);
+  delay(10);
 }
 
 void clearLedRing() {
