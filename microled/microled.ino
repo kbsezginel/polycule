@@ -2,54 +2,99 @@
 // POLYCULE | MICROLED | LED Animation with audio input
 // ----------------------------------------------------------------------------------
 #include <Adafruit_NeoPixel.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include "Adafruit_LEDBackpack.h"
 
-#define MIC_PIN 5
+#define POT_PIN 3
+#define MIC_PIN 0
 #define LED_RING_PIN 13
-double soundLevel = 0;
+#define LED_PIN 12
+int soundLevel = 0;
 
 const byte NUM_PIXELS = 7;
 Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(NUM_PIXELS, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
+
+Adafruit_7segment ledDisplay = Adafruit_7segment();
+
+// The baseline depends on the voltage used for the mic amp (using 330 for 3.3 V)
+const int baseLine = 330;
+const int volMax = 400;
+int gLedLevel = 0;
+int gLedNum = 0;
 byte gColorIdx = 0;
+int gBpm = 120;
+float gTimeDelay = 60.0 / gBpm * 1000.0;
+int gPotVal = 0;
+int gLedState = LOW;
 
-// The baseline depends on the voltage used for the mic amp
-// Use 330 for 3.3 V
-const double baseLine = 330;
-const int volMax = 300;
-int ledLevel = 0;
-int ledNum = 0;
-
+unsigned long gPreviousTime = 0.0;
+unsigned long gCurrentTime = 0.0;
+// -------------------------------------------
 void setup() {
   ledRing.begin();
   ledRing.setBrightness(50);  // btw 0 - 127
   lightLedRing(0, NUM_PIXELS, 0);
   Serial.begin(9600);
+
+  pinMode(LED_PIN, OUTPUT);
+  ledDisplay.begin(0x70);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  soundLevel = analogRead(MIC_PIN);
-  soundLevel -= baseLine;
-  // ledLevel = map(soundLevel, 0, volMax, 30, 126);
-  //  ledRing.setBrightness(ledLevel);
+  setBPM(POT_PIN);
+  gCurrentTime = millis();
+
+  //  soundLevel = analogRead(MIC_PIN);
+  //  soundLevel -= baseLine;
+  //  gLedLevel = map(soundLevel, 0, volMax, 30, 126);
+  //  ledRing.setBrightness(gLedLevel);
   //  ledRing.show();
-  ledNum = map(soundLevel, 0, volMax, 1, 7);
-  lightLedRing(0, ledNum, 0);
-  Serial.print('\n');
-  Serial.print(soundLevel);
-  delay(50);
-  clearLedRing();
-  delay(10);
+
+  //  Serial.print('\n');
+  //  Serial.print(soundLevel);
+  //  Serial.print(',');
+  //  Serial.print(gColorIdx);
+
+  if (gCurrentTime - gPreviousTime > gTimeDelay){
+    if (gLedState == HIGH) {
+      gLedState = LOW;
+      gLedNum += 1;
+      if (gLedNum > 8) {
+        gLedNum = 1;
+      }
+      gColorIdx += 1;
+      lightLedRing(0, gLedNum, gColorIdx);
+    } else {
+      gLedState = HIGH;
+      clearLedRing();
+    }
+    digitalWrite(LED_PIN, gLedState);
+    gPreviousTime = gCurrentTime;
+  }
+}
+// -------------------------------------------------------
+void setBPM(int potPin) {
+  int potRead = analogRead(potPin);
+  // Change value only if current read is different than previous set value
+  if (abs(gPotVal - potRead) > 5) {
+    gBpm = map(potRead, 0, 1023, 10, 300);
+    gTimeDelay = 60.0 / gBpm * 500.0;
+    ledDisplay.print(gBpm, DEC);
+    ledDisplay.writeDisplay();
+    gPotVal = potRead;
+  }
 }
 
 void clearLedRing() {
-  for(int i = 0; i<NUM_PIXELS; i++){
+  for(int i = 0; i < NUM_PIXELS; i++){
     ledRing.setPixelColor(i, 0x000000);
     ledRing.show();
   }
 }
 
 void lightLedRing(int startIndex, int nPixels, int colorIdx) {
-  for(int i=startIndex;i<startIndex+nPixels;i++){
+  for(int i = startIndex; i < startIndex + nPixels; i++){
     ledRing.setPixelColor(i, colorWheel(colorIdx));
     ledRing.show();
   }
@@ -66,8 +111,4 @@ uint32_t colorWheel(byte WheelPos) {
   }
   WheelPos -= 170;
   return ledRing.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
-}
-
-uint32_t dimColor(uint32_t color, uint8_t width) {
-   return (((color&0xFF0000)/width)&0xFF0000) + (((color&0x00FF00)/width)&0x00FF00) + (((color&0x0000FF)/width)&0x0000FF);
 }
