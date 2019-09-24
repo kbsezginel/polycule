@@ -17,6 +17,7 @@ byte gLedStep = 5;
 byte gColorIdx = 0;
 int gLedLevel = 0;
 int gLedNum = 0;
+int gColorScheme[] = {0, 0, 50, 50, 200, 200, 50, 50};
 
 // ---------------------------- 7 SEGMENT DISPLAY SETUP -----------------------------
 // SCL (A4) | SDA (A5)
@@ -30,7 +31,15 @@ unsigned long gCurrentTime = 0.0;
 
 // ------------------------------ POTENTIOMETER SETUP -------------------------------
 int gPotVal = 0;
+
+// --------------------------------- LED SETUP -------------------------------
 int gLedState = LOW;
+
+// --------------------------------- LED TEMPO SETUP -------------------------------
+#define LED_ARRAY_PIN 12
+Adafruit_NeoPixel ledArray = Adafruit_NeoPixel(8, LED_ARRAY_PIN, NEO_GRB + NEO_KHZ800);
+byte gLedArrayIdx = 0;
+int gLedArrayColorIdx = 0;
 
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
@@ -49,19 +58,9 @@ void loop() {
   gCurrentTime = millis();
 
   if (gCurrentTime - gPreviousTime > gTimeDelay){
-    if (gLedState == HIGH) {
-      gLedState = LOW;
-      gLedNum += gLedStep;
-      if (gLedNum > NUM_PIXELS) {
-        gLedNum = 1;
-      }
-      gColorIdx += 1;
-      lightneoPixel(0, gLedNum, gColorIdx);
-    } else {
-      gLedState = HIGH;
-      clearneoPixel();
-    }
-    digitalWrite(LED_PIN, gLedState);
+    blinkLED();
+    animateNeoPixel();
+    animateLedArray();
     gPreviousTime = gCurrentTime;
   }
 }
@@ -76,6 +75,61 @@ void setBPM(int potPin) {
     ledDisplay.writeDisplay();
     gPotVal = potRead;
   }
+}
+
+// LED Array -----------------------------------------------------------------------
+void animateLedArray() {
+  gLedArrayIdx += 1;
+  if (gLedArrayIdx == 1){
+    gLedArrayColorIdx = 100;
+  } else {
+    gLedArrayColorIdx = 0;
+  }
+  if (gLedArrayIdx > 8) {
+    gLedArrayIdx = 0;
+    clearLedArray();
+  } else {
+    lightLedArray(0, gLedArrayIdx, gLedArrayColorIdx);
+  }
+}
+
+void clearLedArray() {
+  for(int i = 0; i < 8; i++){
+    ledArray.setPixelColor(i, 0x000000);
+    ledArray.show();
+  }
+}
+
+void lightLedArray(int startIndex, int nPixels, int colorIdx) {
+  for(int i = startIndex; i < startIndex + nPixels; i++){
+    ledArray.setPixelColor(i, colorWheel(colorIdx));
+    ledArray.show();
+  }
+}
+// ----------------------------------------------------------------------------------
+
+// Blink LED
+void blinkLED() {
+  if (gLedState == HIGH) {
+    gLedState = LOW;
+  } else {
+    gLedState = HIGH;
+  }
+  digitalWrite(LED_PIN, gLedState);
+}
+
+// Animate NeoPixel Strip | Light colors step by step and change color according to color scheme
+void animateNeoPixel() {
+  gLedNum += gLedStep;
+  gColorIdx += 1;
+  if (gLedNum > NUM_PIXELS) {
+    gLedNum = 1;
+    clearneoPixel();
+  }
+  if (gColorIdx >= sizeof(gColorScheme)) {
+    gColorIdx = 0;
+  }
+  lightneoPixel(0, gLedNum, gColorScheme[gColorIdx]);
 }
 
 void clearneoPixel() {
