@@ -1,5 +1,5 @@
 // ----------------------------------------------------------------------------------
-// POLYCULE | MICROLED | LED Animation with audio input
+// POLYCULE | MICROLED | LED Animation
 // ----------------------------------------------------------------------------------
 #include <Adafruit_NeoPixel.h>
 #include <Wire.h>
@@ -7,35 +7,38 @@
 #include "Adafruit_LEDBackpack.h"
 
 #define POT_PIN 3
-#define MIC_PIN 0
-#define LED_RING_PIN 13
-#define LED_PIN 12
-int soundLevel = 0;
+#define NEO_PIN 13
+#define LED_PIN 2
 
-const byte NUM_PIXELS = 7;
-Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(NUM_PIXELS, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
-
-Adafruit_7segment ledDisplay = Adafruit_7segment();
-
-// The baseline depends on the voltage used for the mic amp (using 330 for 3.3 V)
-const int baseLine = 330;
-const int volMax = 400;
+// ---------------------------- NEOPIXEL LED STRIP SETUP ----------------------------
+const byte NUM_PIXELS = 50;
+Adafruit_NeoPixel neoPixel = Adafruit_NeoPixel(NUM_PIXELS, NEO_PIN, NEO_GRB + NEO_KHZ800);
+byte gLedStep = 5;
+byte gColorIdx = 0;
 int gLedLevel = 0;
 int gLedNum = 0;
-byte gColorIdx = 0;
+
+// ---------------------------- 7 SEGMENT DISPLAY SETUP -----------------------------
+// SCL (A4) | SDA (A5)
+Adafruit_7segment ledDisplay = Adafruit_7segment();
+
+// ---------------------------------- TEMPO SETUP -----------------------------------
 int gBpm = 120;
 float gTimeDelay = 60.0 / gBpm * 1000.0;
+unsigned long gPreviousTime = 0.0;
+unsigned long gCurrentTime = 0.0;
+
+// ------------------------------ POTENTIOMETER SETUP -------------------------------
 int gPotVal = 0;
 int gLedState = LOW;
 
-unsigned long gPreviousTime = 0.0;
-unsigned long gCurrentTime = 0.0;
-// -------------------------------------------
+// ----------------------------------------------------------------------------------
+// >x< SETUP >x<
+// ----------------------------------------------------------------------------------
 void setup() {
-  ledRing.begin();
-  ledRing.setBrightness(50);  // btw 0 - 127
-  lightLedRing(0, NUM_PIXELS, 0);
-  Serial.begin(9600);
+  neoPixel.begin();
+  neoPixel.setBrightness(50);  // btw 0 - 127
+  lightneoPixel(0, NUM_PIXELS, 0);
 
   pinMode(LED_PIN, OUTPUT);
   ledDisplay.begin(0x70);
@@ -45,29 +48,18 @@ void loop() {
   setBPM(POT_PIN);
   gCurrentTime = millis();
 
-  //  soundLevel = analogRead(MIC_PIN);
-  //  soundLevel -= baseLine;
-  //  gLedLevel = map(soundLevel, 0, volMax, 30, 126);
-  //  ledRing.setBrightness(gLedLevel);
-  //  ledRing.show();
-
-  //  Serial.print('\n');
-  //  Serial.print(soundLevel);
-  //  Serial.print(',');
-  //  Serial.print(gColorIdx);
-
   if (gCurrentTime - gPreviousTime > gTimeDelay){
     if (gLedState == HIGH) {
       gLedState = LOW;
-      gLedNum += 1;
-      if (gLedNum > 8) {
+      gLedNum += gLedStep;
+      if (gLedNum > NUM_PIXELS) {
         gLedNum = 1;
       }
       gColorIdx += 1;
-      lightLedRing(0, gLedNum, gColorIdx);
+      lightneoPixel(0, gLedNum, gColorIdx);
     } else {
       gLedState = HIGH;
-      clearLedRing();
+      clearneoPixel();
     }
     digitalWrite(LED_PIN, gLedState);
     gPreviousTime = gCurrentTime;
@@ -86,29 +78,29 @@ void setBPM(int potPin) {
   }
 }
 
-void clearLedRing() {
+void clearneoPixel() {
   for(int i = 0; i < NUM_PIXELS; i++){
-    ledRing.setPixelColor(i, 0x000000);
-    ledRing.show();
+    neoPixel.setPixelColor(i, 0x000000);
+    neoPixel.show();
   }
 }
 
-void lightLedRing(int startIndex, int nPixels, int colorIdx) {
+void lightneoPixel(int startIndex, int nPixels, int colorIdx) {
   for(int i = startIndex; i < startIndex + nPixels; i++){
-    ledRing.setPixelColor(i, colorWheel(colorIdx));
-    ledRing.show();
+    neoPixel.setPixelColor(i, colorWheel(colorIdx));
+    neoPixel.show();
   }
 }
 
 uint32_t colorWheel(byte WheelPos) {
   WheelPos = 255 - WheelPos;
   if(WheelPos < 85) {
-    return ledRing.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+    return neoPixel.Color(255 - WheelPos * 3, 0, WheelPos * 3);
   }
   if(WheelPos < 170) {
     WheelPos -= 85;
-    return ledRing.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+    return neoPixel.Color(0, WheelPos * 3, 255 - WheelPos * 3);
   }
   WheelPos -= 170;
-  return ledRing.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+  return neoPixel.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
