@@ -9,15 +9,20 @@
 #define POT_PIN 3
 #define NEO_PIN 13
 #define LED_PIN 2
+#define SWITCH_PIN 3
 
 // ---------------------------- NEOPIXEL LED STRIP SETUP ----------------------------
 const byte NUM_PIXELS = 50;
 Adafruit_NeoPixel neoPixel = Adafruit_NeoPixel(NUM_PIXELS, NEO_PIN, NEO_GRB + NEO_KHZ800);
 byte gLedStep = 5;
+byte gLedAnimIdx = 0;
+byte gLedNum = 0;
 byte gColorIdx = 0;
-int gLedLevel = 0;
-int gLedNum = 0;
-int gColorScheme[] = {0, 0, 50, 50, 200, 200, 50, 50};
+#define NUM_COLORS 8
+int gColorScheme1[NUM_COLORS] = {75, 75, 50, 50, 60, 60, 50, 50};
+int gColorScheme2[NUM_COLORS] = {90, 90, 110, 110, 130, 130, 150, 150};
+int gColorScheme3[NUM_COLORS] = {170, 170, 210, 210, 230, 230, 250, 250};
+int gColorScheme[NUM_COLORS];
 
 // ---------------------------- 7 SEGMENT DISPLAY SETUP -----------------------------
 // SCL (A4) | SDA (A5)
@@ -50,21 +55,34 @@ void setup() {
   lightneoPixel(0, NUM_PIXELS, 0);
 
   pinMode(LED_PIN, OUTPUT);
+  pinMode(SWITCH_PIN, INPUT);
   ledDisplay.begin(0x70);
+  for(int i = 0; i < 8; i++){
+    gColorScheme[i] = gColorScheme1[i];
+  }
 }
 
+// ----------------------------------------------------------------------------------
+// >x< LOOP >x<
+// ----------------------------------------------------------------------------------
+
 void loop() {
-  setBPM(POT_PIN);
+  // setBPM(POT_PIN);
   gCurrentTime = millis();
 
   if (gCurrentTime - gPreviousTime > gTimeDelay){
     blinkLED();
-    animateNeoPixel();
-    animateLedArray();
+    if (digitalRead(SWITCH_PIN) == HIGH) {
+      setBPM(POT_PIN);
+      animateNeoPixel3();
+    } else {
+      setColorScheme(POT_PIN);
+      animateNeoPixel2();
+    }
     gPreviousTime = gCurrentTime;
   }
 }
-// -------------------------------------------------------
+// ----------------------------------------------------------------------------------
 void setBPM(int potPin) {
   int potRead = analogRead(potPin);
   // Change value only if current read is different than previous set value
@@ -76,6 +94,31 @@ void setBPM(int potPin) {
     gPotVal = potRead;
   }
 }
+
+void setColorScheme(int potPin) {
+  int potRead = analogRead(potPin);
+  // Change value only if current read is different than previous set value
+  byte csIdx = map(potRead, 0, 1023, 1, 4);
+  if (csIdx == 1) {
+    for(int i = 0; i < 8; i++){
+      gColorScheme[i] = gColorScheme1[i];
+    }
+  }
+  if (csIdx == 2) {
+    for(int i = 0; i < 8; i++){
+      gColorScheme[i] = gColorScheme2[i];
+    }
+  }
+  if (csIdx == 3) {
+    for(int i = 0; i < 8; i++){
+      gColorScheme[i] = gColorScheme3[i];
+    }
+  }
+  ledDisplay.print(csIdx, DEC);
+  ledDisplay.writeDisplay();
+  gPotVal = potRead;
+}
+
 
 // LED Array -----------------------------------------------------------------------
 void animateLedArray() {
@@ -108,6 +151,10 @@ void lightLedArray(int startIndex, int nPixels, int colorIdx) {
 }
 // ----------------------------------------------------------------------------------
 
+void setSwitch() {
+
+}
+
 // Blink LED
 void blinkLED() {
   if (gLedState == HIGH) {
@@ -118,18 +165,61 @@ void blinkLED() {
   digitalWrite(LED_PIN, gLedState);
 }
 
+// NEOPIXEL -------------------------------------------------------------------------
 // Animate NeoPixel Strip | Light colors step by step and change color according to color scheme
 void animateNeoPixel() {
-  gLedNum += gLedStep;
+  // Set color
   gColorIdx += 1;
+  if (gColorIdx >= NUM_COLORS) {
+    gColorIdx = 0;
+  }
+  // Set anim
+  gLedNum += gLedStep;
   if (gLedNum > NUM_PIXELS) {
     gLedNum = 1;
     clearneoPixel();
   }
-  if (gColorIdx >= sizeof(gColorScheme)) {
+
+  lightneoPixel(0, gLedNum, gColorScheme[gColorIdx]);
+}
+
+// NeoPixel Animation 2 | Blink all LEDs and change color
+void animateNeoPixel2() {
+  // Set color
+  gColorIdx += 1;
+  if (gColorIdx >= NUM_COLORS) {
     gColorIdx = 0;
   }
-  lightneoPixel(0, gLedNum, gColorScheme[gColorIdx]);
+  // Set anim
+  gLedAnimIdx += 1;
+  if (gLedAnimIdx == 1) {
+    lightneoPixel(0, NUM_PIXELS, gColorScheme[gColorIdx]);
+  } else {
+    clearneoPixel();
+    gLedAnimIdx = 0;
+  }
+}
+
+// NeoPixel Animation 3 | Light ever other LED and change color
+void animateNeoPixel3() {
+  clearneoPixel();
+  // Set color
+  gColorIdx += 1;
+  if (gColorIdx >= NUM_COLORS) {
+    gColorIdx = 0;
+  }
+  // Set anim
+  byte ledStart = 0;
+  gLedAnimIdx += 1;
+  if (gLedAnimIdx == 1) {
+    ledStart = 1;
+  } else {
+    gLedAnimIdx = 0;
+  }
+  for(int i = ledStart; i < NUM_PIXELS; i += 2){
+    neoPixel.setPixelColor(i, colorWheel(gColorScheme[gColorIdx]));
+    neoPixel.show();
+  }
 }
 
 void clearneoPixel() {
