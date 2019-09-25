@@ -85,14 +85,11 @@ void loop() {
 // ----------------------------------------------------------------------------------
 void setBPM(int potPin) {
   int potRead = analogRead(potPin);
-  // Change value only if current read is different than previous set value
-  if (abs(gPotVal - potRead) > 5) {
-    gBpm = map(potRead, 0, 1023, 10, 300);
-    gTimeDelay = 60.0 / gBpm * 500.0;
-    ledDisplay.print(gBpm, DEC);
-    ledDisplay.writeDisplay();
-    gPotVal = potRead;
-  }
+  gBpm = map(potRead, 0, 1023, 50, 250);
+  gTimeDelay = 60.0 / gBpm * 500.0;
+  ledDisplay.print(gBpm, DEC);
+  ledDisplay.writeDisplay();
+  gPotVal = potRead;
 }
 
 void setColorScheme(int potPin) {
