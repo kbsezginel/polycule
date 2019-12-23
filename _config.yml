@@ -13,6 +13,8 @@ navigation:
     url: moduled-nano
   - title: Moduled Rack
     url: moduled-rack
+  - title: Lunt
+    url: lunt
   - title: Resources
     url: resources
   - title: PO-24 Cheat Sheet
