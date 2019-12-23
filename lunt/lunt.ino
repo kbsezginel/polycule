@@ -12,6 +12,8 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 #define DIM2_PIN 12
 #define DIM3_PIN 9
 #define DIM4_PIN 10
+int gMinBrightness = 60;
+int gMaxBrightness = 255;
 DimmableLight dimLight1(DIM1_PIN);
 DimmableLight dimLight2(DIM2_PIN);
 DimmableLight dimLight3(DIM3_PIN);
@@ -36,36 +38,53 @@ void loop() {
 // MIDI FUNCTIONS
 // ----------------------------------------------------------------------------------
 void MyHandleNoteOn(byte channel, byte pitch, byte velocity) {
-  dimLight1.setBrightness(250);
-  dimLight2.setBrightness(250);
-  dimLight3.setBrightness(250);
-  dimLight4.setBrightness(250);
+  int brightness = map(velocity, 0, 127, gMinBrightness, gMaxBrightness);
+  switch (pitch) {
+    case 60:
+      dimLight1.setBrightness(brightness);
+      break;
+    case 61:
+      dimLight2.setBrightness(brightness);
+      break;
+    case 62:
+      dimLight3.setBrightness(brightness);
+      break;
+    case 63:
+      dimLight4.setBrightness(brightness);
+      break;
+  }
 }
 
 void MyHandleNoteOff(byte channel, byte pitch, byte velocity) {
-  dimLight1.setBrightness(70);
-  dimLight2.setBrightness(70);
-  dimLight3.setBrightness(70);
-  dimLight4.setBrightness(70);
+  switch (pitch) {
+    case 60:
+      dimLight1.setBrightness(gMinBrightness);
+      break;
+    case 61:
+      dimLight2.setBrightness(gMinBrightness);
+      break;
+    case 62:
+      dimLight3.setBrightness(gMinBrightness);
+      break;
+    case 63:
+      dimLight4.setBrightness(gMinBrightness);
+      break;
+  }
 }
 
 void MyCCFunction(byte channel, byte number, byte value) {
-  int brightness = 80;
+  int brightness = map(value, 0, 127, gMinBrightness, gMaxBrightness);
   switch (number) {
     case 22:
-      brightness = map(value, 0, 127, 60, 255);
       dimLight1.setBrightness(brightness);
       break;
     case 23:
-      brightness = map(value, 0, 127, 60, 255);
       dimLight2.setBrightness(brightness);
       break;
     case 24:
-      brightness = map(value, 0, 127, 60, 255);
       dimLight3.setBrightness(brightness);
       break;
     case 25:
-      brightness = map(value, 0, 127, 60, 255);
       dimLight4.setBrightness(brightness);
       break;
   }
