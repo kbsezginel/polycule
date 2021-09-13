@@ -16,6 +16,7 @@ int pitch = 42;
 // -----------------------------------------------------------------------------
 void setup() {
   Serial.begin(9600);
+  pinMode(A0, INPUT_PULLUP);
   // neoPixel.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
   // neoPixel.show();            // Turn OFF all pixels ASAP
   // neoPixel.setBrightness(50); // Set BRIGHTNESS to about 1/5 (max = 255)
@@ -26,7 +27,7 @@ void loop() {
   // lightNeoPixel(0, n, 0);
   // print out the value you read:
   Serial.println(sensorValue);
-  delay(1);        // delay in between reads for stability
+  delay(20);        // delay in between reads for stability
 }
 // ----------------------------------------------------------------------------------
 // LED FUNCTIONS
