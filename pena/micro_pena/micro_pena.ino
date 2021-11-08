@@ -2,10 +2,11 @@
 
 // Rotary Encoder 1
 #define RE1_CLK_PIN 2
-#define RE1_DT_PIN 3
+#define RE1_DT_PIN 5
 #define RE1_BUTTON_PIN 4
+
 // Rotary Encoder 2
-#define RE2_CLK_PIN 5
+#define RE2_CLK_PIN 3
 #define RE2_DT_PIN 6
 #define RE2_BUTTON_PIN 7
 
@@ -16,27 +17,34 @@ bool setupMode = false;
 
 // -------------------------------- MIDI SETUP ---------------------------------
 MIDI_CREATE_DEFAULT_INSTANCE();
-const byte MIDI_CHANNEL = 1;
+const byte MIDI_CHANNEL = 7;
+byte ccRE1 = 1;
+byte ccRE2 = 2;
+int note = 36; // C3 (https://newt.phys.unsw.edu.au/jw/notes.html)
+int velocity = 127;
 
 // ---------------------------- ROTARY ENCODER SETUP ---------------------------
-byte sensitivityRE = 7;
+int sensitivityRE = 3;
 
 int posRE1 = 0;
 int valRE1;
 int lastValRE1;
-byte sendRE1;          // Rotary endcoder 1 send value
-byte sendMaxRE1 = 12;  // Upper limit for the send value
+int sendRE1 = 0;          // Rotary endcoder 1 send value
+int lastsendRE1 = 0;
+byte sendMaxRE1 = 127;  // Upper limit for the send value
 byte sendMinRE1 = 0;   // Lower limit for the send value
 bool valChangeRE1 = false;
+bool pressedRE1 = false;
 
-
-int note = 36; // C3 (https://newt.phys.unsw.edu.au/jw/notes.html)
-int velocity = 127;
-
-// ------------------------------ LED RING SETUP -------------------------------
-const byte NUM_PIXELS = 12;
-Adafruit_NeoPixel ledRing = Adafruit_NeoPixel(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
-
+int posRE2 = 0;
+int valRE2;
+int lastValRE2;
+int sendRE2 = 0;          // Rotary endcoder 1 send value
+int lastsendRE2 = 0;
+byte sendMaxRE2 = 127;  // Upper limit for the send value
+byte sendMinRE2 = 0;   // Lower limit for the send value
+bool valChangeRE2 = false;
+bool pressedRE2 = false;
 // #############################################################################
 void setup() {
   // MIDI
@@ -57,44 +65,33 @@ void setup() {
   pinMode(RE2_CLK_PIN, INPUT_PULLUP);
   pinMode(RE2_DT_PIN, INPUT_PULLUP);
   pinMode(RE2_BUTTON_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(RE1_CLK_PIN), readRE2, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(RE2_CLK_PIN), readRE2, CHANGE);
 
-  Serial.begin(9600);
+  // Serial.begin(9600);
 }
 // #############################################################################
 void loop() {
 
-
   if (digitalRead(RE1_BUTTON_PIN) == LOW){
    // Button pressed
-    Serial.print("RE1 Pressed");
+    // Serial.print("Pressed 1\n");
+    MIDI.sendNoteOn(note, velocity, MIDI_CHANNEL);
+    pressedRE1 = true;
+    delay(100);
+  } else {
+    if (pressedRE1) {
+      MIDI.sendNoteOff(note, velocity, MIDI_CHANNEL);
+      pressedRE1 = false;
+    }
   }
 
   if (digitalRead(RE2_BUTTON_PIN) == LOW){
    // Button pressed
-    Serial.print("RE2 Pressed");
+    // Serial.print("Pressed 2\n");
+    MIDI.sendControlChange(3, 127, MIDI_CHANNEL);
+    delay(100);
   }
 
-  readSwitch();
-  // Rotary encoder
-  readREButton();
-
-//  if (valRotary>lastValRotary)
-//  {
-//    valPot = min(valRotary, 127);
-//    MIDI.sendControlChange(20, min(valRotary, 120), 1);
-//    Serial.print("MINUS");
-//  }
-// if(valRotary<lastValRotary)
-//  {
-//    valPot = max(valRotary, 0);
-//    MIDI.sendControlChange(20, max(valRotary, 0), 1);
-//    Serial.print("PLUS");
-//  }
-//  lastValRotary = valRotary;
-  // Serial.println(valRotary);
-  // Serial.println(" ");
-  // Serial.println(valPot);
 }
 // #############################################################################
 
@@ -119,8 +116,15 @@ void readRE1() {
     valChangeRE1 = false;
   }
 
-  Serial.println("RE1 val " + sendRE1);
+  if (sendRE1 != lastsendRE1) {
+    MIDI.sendControlChange(ccRE1, sendRE1, MIDI_CHANNEL);
+  }
+
+  // Serial.print("1 ");
+  // Serial.println(sendRE1);
+  // Serial.println(" ");
   lastValRE1 = valRE1;
+  lastsendRE2 = sendRE2;
 }
 
 
@@ -145,8 +149,14 @@ void readRE2() {
     valChangeRE2 = false;
   }
 
-  Serial.println("RE2 val " + sendRE2);
+  if (sendRE2 != lastsendRE2) {
+    MIDI.sendControlChange(ccRE2, sendRE2, MIDI_CHANNEL);
+  }
+
+  // Serial.print("2 ");
+  // Serial.println(sendRE2);
   lastValRE2 = valRE2;
+  lastsendRE2 = sendRE2;
 }
 
 // void readSwitch() {

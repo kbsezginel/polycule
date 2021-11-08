@@ -72,3 +72,6 @@ https://www.pjrc.com/teensy/td_midi.html
 ```
 
 ```
+
+### Resources
+- Digitakt MIDI CCs : https://midi.user.camp/d/elektron/digitakt/
