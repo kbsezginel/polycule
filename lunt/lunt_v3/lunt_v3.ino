@@ -19,9 +19,7 @@
 // reads LOW when closed to GND. If your two modes feel reversed, flip HIGH <-> LOW.
 #define MIDI_MODE_LEVEL   HIGH
 
-// Encoder feel. ENCODER_DIVISOR = interrupt edges per detent (try 2 or 4 for yours);
-// ENCODER_STEP = brightness change (0-255) applied per detent.
-const int  ENCODER_DIVISOR = 2;
+// Encoder feel: brightness change (0-255) applied per detent (one click of the knob).
 const int  ENCODER_STEP     = 8;
 
 // MIDI note -> light mapping (one note per light). Note ON sets brightness from
@@ -79,9 +77,29 @@ byte gSelected = 0;
 bool gButtonLast = false;
 unsigned long gButtonLastTime = 0;
 
-// Rotary encoder position, updated in the ISR only.
-volatile long gEncoderPos = 0;
-long gEncoderPosLast = 0;          // last position consumed by handleEncoder()
+// Rotary encoder: polled quadrature state-table decoder (Ben Buxton style). It only
+// emits a step on a complete, valid detent transition, so contact bounce and noise
+// are rejected instead of being counted as random jumps.
+#define R_START     0x0
+#define R_CW_FINAL  0x1
+#define R_CW_BEGIN  0x2
+#define R_CW_NEXT   0x3
+#define R_CCW_BEGIN 0x4
+#define R_CCW_FINAL 0x5
+#define R_CCW_NEXT  0x6
+#define DIR_NONE    0x0
+#define DIR_CW      0x10
+#define DIR_CCW     0x20
+const unsigned char ENCODER_TABLE[7][4] = {
+  {R_START,    R_CW_BEGIN,  R_CCW_BEGIN, R_START},
+  {R_CW_NEXT,  R_START,     R_CW_FINAL,  R_START | DIR_CW},
+  {R_CW_NEXT,  R_CW_BEGIN,  R_START,     R_START},
+  {R_CW_NEXT,  R_CW_BEGIN,  R_CW_FINAL,  R_START},
+  {R_CCW_NEXT, R_START,     R_CCW_BEGIN, R_START},
+  {R_CCW_NEXT, R_CCW_FINAL, R_START,     R_START | DIR_CCW},
+  {R_CCW_NEXT, R_CCW_FINAL, R_CCW_BEGIN, R_START},
+};
+unsigned char gEncoderState = R_START;
 
 // MIDI clock / beat tracking.
 const byte PPQN = 24;              // MIDI clock pulses per quarter note
@@ -108,7 +126,6 @@ void setup() {
   pinMode(RE_CLK_PIN, INPUT_PULLUP);
   pinMode(RE_DT_PIN, INPUT_PULLUP);
   pinMode(RE_BUTTON_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(RE_CLK_PIN), readEncoder, CHANGE);
 
   pinMode(SWITCH_PIN, INPUT_PULLUP);
 
@@ -153,12 +170,8 @@ void onModeChange() {
     gBeatFlashActive = false;
     clearStrip();
   } else {
-    // Resync the encoder baseline so turns made while in MIDI mode don't cause a
-    // brightness jump when we re-enter manual mode.
-    noInterrupts();
-    gEncoderPosLast = gEncoderPos;
-    interrupts();
-    gStripDirty = true;   // redraw selection + brightness bar
+    gEncoderState = R_START;   // start the decoder fresh
+    gStripDirty = true;        // redraw selection + brightness bar
   }
 }
 
@@ -180,28 +193,20 @@ void setAllLights(int value) {
 // ----------------------------------------------------------------------------------
 // ROTARY ENCODER (MANUAL MODE)
 // ----------------------------------------------------------------------------------
-// ISR: keep it tiny - only track position. All output happens in loop().
-void readEncoder() {
-  if (digitalRead(RE_CLK_PIN) == digitalRead(RE_DT_PIN)) {
-    gEncoderPos--;
-  } else {
-    gEncoderPos++;
-  }
+// Poll both encoder pins and feed them through the state table. Returns DIR_CW,
+// DIR_CCW once per detent, or DIR_NONE for intermediate / bounce transitions.
+unsigned char readEncoder() {
+  unsigned char pinState = (digitalRead(RE_DT_PIN) << 1) | digitalRead(RE_CLK_PIN);
+  gEncoderState = ENCODER_TABLE[gEncoderState & 0x0F][pinState];
+  return gEncoderState & 0x30;
 }
 
 void handleEncoder() {
-  long pos;
-  noInterrupts();
-  pos = gEncoderPos;
-  interrupts();
-
-  int steps = (int)((pos - gEncoderPosLast) / ENCODER_DIVISOR);
-  if (steps == 0) {
+  unsigned char dir = readEncoder();
+  if (dir == DIR_NONE) {
     return;
   }
-  gEncoderPosLast += (long)steps * ENCODER_DIVISOR;
-
-  int delta = steps * ENCODER_STEP;
+  int delta = (dir == DIR_CW) ? ENCODER_STEP : -ENCODER_STEP;
   if (gSelected == NUM_LIGHTS) {            // ALL selected
     for (byte i = 0; i < NUM_LIGHTS; i++) {
       setLight(i, gBrightness[i] + delta);
