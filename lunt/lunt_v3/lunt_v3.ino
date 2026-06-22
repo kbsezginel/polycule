@@ -72,7 +72,8 @@ Adafruit_NeoPixel ledStrip = Adafruit_NeoPixel(NUM_PIXELS, LED_PIN, NEO_GRB + NE
 bool gMidiMode = false;            // current mode (set in setup)
 bool gStripDirty = true;           // manual-mode strip needs redraw
 
-// Manual-mode selection: 0..3 = single light, 4 = ALL lights.
+// Manual-mode selection: 0 = ALL lights (the default), 1..4 = single light.
+// Pressing the encoder cycles ALL -> 1 -> 2 -> 3 -> 4 -> ALL.
 byte gSelected = 0;
 bool gButtonLast = false;
 unsigned long gButtonLastTime = 0;
@@ -170,6 +171,7 @@ void onModeChange() {
     gBeatFlashActive = false;
     clearStrip();
   } else {
+    gSelected = 0;             // entering manual mode defaults to ALL lights
     gEncoderState = R_START;   // start the decoder fresh
     gStripDirty = true;        // redraw selection + brightness bar
   }
@@ -206,13 +208,14 @@ void handleEncoder() {
   if (dir == DIR_NONE) {
     return;
   }
-  int delta = (dir == DIR_CW) ? ENCODER_STEP : -ENCODER_STEP;
-  if (gSelected == NUM_LIGHTS) {            // ALL selected
+  // Signs chosen so turning the knob right brightens. If yours is reversed, swap them.
+  int delta = (dir == DIR_CW) ? -ENCODER_STEP : ENCODER_STEP;
+  if (gSelected == 0) {                     // ALL selected
     for (byte i = 0; i < NUM_LIGHTS; i++) {
       setLight(i, gBrightness[i] + delta);
     }
   } else {
-    setLight(gSelected, gBrightness[gSelected] + delta);
+    setLight(gSelected - 1, gBrightness[gSelected - 1] + delta);
   }
   gStripDirty = true;
 }
@@ -238,19 +241,21 @@ void clearStrip() {
 }
 
 void fillStrip(uint32_t color, byte litCount) {
+  // Fill from the high-index end so the bar grows from the opposite physical side.
   for (byte i = 0; i < NUM_PIXELS; i++) {
-    ledStrip.setPixelColor(i, i < litCount ? color : 0);
+    ledStrip.setPixelColor(i, i >= (NUM_PIXELS - litCount) ? color : 0);
   }
   ledStrip.show();
 }
 
 // Color used to indicate which light is selected in manual mode.
+// Selection index: 0 = ALL, 1..4 = light 1..4.
 uint32_t selectionColor(byte sel) {
   switch (sel) {
-    case 0:  return ledStrip.Color(255,   0,   0);  // light 1 - red
-    case 1:  return ledStrip.Color(  0, 255,   0);  // light 2 - green
-    case 2:  return ledStrip.Color(  0,   0, 255);  // light 3 - blue
-    case 3:  return ledStrip.Color(255, 150,   0);  // light 4 - amber
+    case 1:  return ledStrip.Color(255,   0,   0);  // light 1 - red
+    case 2:  return ledStrip.Color(  0, 255,   0);  // light 2 - green
+    case 3:  return ledStrip.Color(  0,   0, 255);  // light 3 - blue
+    case 4:  return ledStrip.Color(255, 150,   0);  // light 4 - amber
     default: return ledStrip.Color(255, 255, 255);  // ALL      - white
   }
 }
@@ -258,12 +263,12 @@ uint32_t selectionColor(byte sel) {
 // Manual mode: color = selected light, lit pixels = its brightness.
 void drawManualStrip() {
   byte b;
-  if (gSelected == NUM_LIGHTS) {
+  if (gSelected == 0) {                   // ALL selected
     int sum = 0;
     for (byte i = 0; i < NUM_LIGHTS; i++) sum += gBrightness[i];
     b = sum / NUM_LIGHTS;
   } else {
-    b = gBrightness[gSelected];
+    b = gBrightness[gSelected - 1];
   }
   byte litCount = map(b, 0, 255, 0, NUM_PIXELS);
   fillStrip(selectionColor(gSelected), litCount);
