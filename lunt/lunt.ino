@@ -36,6 +36,18 @@ const byte CC_CLOCK_ANIM    = 26;                 // >=64 enables clock light an
 // only animates the NeoPixel strip and notes/CC keep direct control of the lights).
 bool gClockAnim = false;
 
+// --- Dimmable LED calibration -----------------------------------------------------
+// AC phase-cut dimming only uses part of the 0-255 range with LED bulbs: they stay
+// dark at the bottom and reach full brightness well before the top. These map the
+// full control range onto the bulb's usable window so the whole encoder/MIDI sweep is
+// useful. Calibrate to your bulbs:
+//   LED_MIN_OUT = value where the bulb just turns on
+//   LED_MAX_OUT = value where it stops getting brighter
+const byte  LED_MIN_OUT = 64;    // ~2nd LED lit on the strip
+const byte  LED_MAX_OUT = 150;   // ~a little past halfway
+// 1.0 = linear within the window; >1 gives finer control / a more gradual low end.
+const float LED_GAMMA   = 1.0;
+
 // -------------------------------- CONTROLLER IO -----------------------------------
 const byte SWITCH_PIN     = A0;   // mode switch  (D14)
 const byte LED_PIN        = A1;   // NeoPixel data (D15)
@@ -182,8 +194,19 @@ void onModeChange() {
 // ----------------------------------------------------------------------------------
 void setLight(byte index, int value) {
   value = constrain(value, 0, 255);
-  gBrightness[index] = (byte)value;
-  gLights[index]->setBrightness((byte)value);
+  gBrightness[index] = (byte)value;                          // logical level (drives the strip bar)
+  gLights[index]->setBrightness(calibrateBrightness((byte)value));
+}
+
+// Map a logical 0-255 brightness onto the bulb's usable dimming window (see config).
+byte calibrateBrightness(byte value) {
+  if (value == 0) return 0;                                  // fully off
+  long curved = value;
+  if (LED_GAMMA != 1.0) {
+    curved = (long)(pow(value / 255.0, LED_GAMMA) * 255.0 + 0.5);
+    curved = constrain(curved, 1, 255);
+  }
+  return (byte)map(curved, 1, 255, LED_MIN_OUT, LED_MAX_OUT);
 }
 
 void setAllLights(int value) {

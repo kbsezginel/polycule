@@ -107,7 +107,9 @@ mode — flip `MIDI_MODE_LEVEL` in the sketch if your two modes come out reverse
 
 Adjustable knobs are grouped in the `CONFIG / KNOBS` section at the top of the sketch:
 mode-switch polarity (`MIDI_MODE_LEVEL`), encoder step size (`ENCODER_STEP`), the
-note/CC numbers, and the default state of the clock animation (`gClockAnim`).
+note/CC numbers, the default state of the clock animation (`gClockAnim`), and the
+dimmable-LED calibration (`LED_MIN_OUT` / `LED_MAX_OUT` / `LED_GAMMA` — see
+[Troubleshooting](#troubleshooting)).
 
 ### Libraries
 Install via the Arduino Library Manager:
@@ -160,3 +162,15 @@ to GND** for hardware debouncing.
 ### Encoder direction or strip fill is backwards
 Swap the two `ENCODER_STEP` signs in `handleEncoder()` to reverse the knob direction;
 the brightness bar fill direction is set in `fillStrip()`.
+
+### Dimmable LED bulbs stay dark at low end / max out before full
+This is normal for AC phase-cut (leading-edge) dimming of LED bulbs: the bulb's driver
+needs a minimum conduction angle to light, and reaches full output well before the top
+of the range — so a linear 0–255 sweep wastes both ends. The sketch maps the control
+range onto the bulb's usable window via `LED_MIN_OUT` / `LED_MAX_OUT`.
+
+To calibrate: in manual mode (ALL selected), turn the encoder up slowly and note the
+value where the bulb **just turns on** (→ `LED_MIN_OUT`) and where it **stops getting
+brighter** (→ `LED_MAX_OUT`). Raise `LED_GAMMA` above 1.0 for a more gradual low end.
+Limits are set by the bulb's driver — LEDs rated for **leading-edge / TRIAC** dimming
+dim furthest; some bulbs simply won't go below ~30%.
