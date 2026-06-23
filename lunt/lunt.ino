@@ -31,10 +31,20 @@ const byte NOTE_MIN_BRIGHT  = 40;                 // softest visible "on" level
 const byte CC_LIGHT[4]      = {22, 23, 24, 25};
 const byte CC_ALL_BRIGHT    = 27;                 // brightness of all lights at once
 const byte CC_CLOCK_ANIM    = 26;                 // >=64 enables clock light animation
+const byte CC_AUDIO_REACT   = 28;                 // >=64 enables audio-reactive mode
 
 // Set true to let the MIDI clock drive the LIGHTS by default (otherwise the clock
 // only animates the NeoPixel strip and notes/CC keep direct control of the lights).
 bool gClockAnim = false;
+
+// Audio-reactive (loudness -> brightness), active in MIDI mode while enabled. Feed a
+// mic amp module (MAX4466/MAX9814, output already biased to ~2.5V) into AUDIO_PIN.
+bool gAudioReactive = false;
+const byte AUDIO_PIN = A2;
+const unsigned long AUDIO_WINDOW_MS = 25;   // amplitude is measured over this window
+const int  AUDIO_PP_MIN = 20;               // peak-to-peak below this = silence (off)
+const int  AUDIO_PP_MAX = 400;              // peak-to-peak that maps to full brightness
+const byte AUDIO_RELEASE = 6;               // how fast brightness falls per window (VU)
 
 // -------------------------------- CONTROLLER IO -----------------------------------
 const byte SWITCH_PIN     = A0;   // mode switch  (D14)
@@ -111,6 +121,13 @@ bool gBeatFlashActive = false;
 unsigned long gBeatFlashStart = 0;
 const unsigned long BEAT_FLASH_MS = 70;
 
+// Audio-reactive envelope follower (non-blocking: one sample per loop, summarised
+// once per AUDIO_WINDOW_MS).
+int gAudioMin = 1023;
+int gAudioMax = 0;
+unsigned long gAudioWindowStart = 0;
+byte gAudioLevel = 0;
+
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
 // ----------------------------------------------------------------------------------
@@ -153,7 +170,11 @@ void loop() {
 
   if (gMidiMode) {
     MIDI.read();          // fires the note/CC/clock handlers above
-    updateBeatFlash();    // clears the strip flash after BEAT_FLASH_MS
+    if (gAudioReactive) {
+      updateAudioBrightness();   // audio drives the lights + a VU bar on the strip
+    } else {
+      updateBeatFlash();         // clears the strip flash after BEAT_FLASH_MS
+    }
   } else {
     handleEncoder();
     handleEncoderButton();
@@ -318,6 +339,14 @@ void handleControlChange(byte channel, byte number, byte value) {
     setAllLights(map(value, 0, 127, 0, 255));
   } else if (number == CC_CLOCK_ANIM) {
     gClockAnim = (value >= 64);
+  } else if (number == CC_AUDIO_REACT) {
+    gAudioReactive = (value >= 64);
+    if (gAudioReactive) {
+      gAudioLevel = 0;
+      gAudioMin = 1023;
+      gAudioMax = 0;
+      gAudioWindowStart = millis();
+    }
   }
 }
 
@@ -344,6 +373,9 @@ void handleStop() {
 }
 
 void onBeat() {
+  // While audio-reactive is on, audio owns the strip and the lights; skip the clock.
+  if (gAudioReactive) return;
+
   // Strip: flash a new color each beat as a tempo indicator.
   fillStrip(colorWheel(gBeatColorIdx), NUM_PIXELS);
   gBeatFlashActive = true;
@@ -364,4 +396,37 @@ void updateBeatFlash() {
     clearStrip();
     gBeatFlashActive = false;
   }
+}
+
+// ----------------------------------------------------------------------------------
+// AUDIO-REACTIVE (MIDI MODE, while CC_AUDIO_REACT is on)
+// ----------------------------------------------------------------------------------
+// Non-blocking envelope follower: sample one ADC reading per loop and track the
+// peak-to-peak swing. Once per window, map that loudness to brightness with a fast
+// attack / slow release (VU-meter feel) and mirror it as a bar on the strip.
+void updateAudioBrightness() {
+  int s = analogRead(AUDIO_PIN);
+  if (s > gAudioMax) gAudioMax = s;
+  if (s < gAudioMin) gAudioMin = s;
+
+  if (millis() - gAudioWindowStart < AUDIO_WINDOW_MS) {
+    return;
+  }
+  int pp = gAudioMax - gAudioMin;        // amplitude over the window
+  gAudioMin = 1023;
+  gAudioMax = 0;
+  gAudioWindowStart = millis();
+
+  byte target = 0;
+  if (pp > AUDIO_PP_MIN) {
+    target = (byte)constrain(map(pp, AUDIO_PP_MIN, AUDIO_PP_MAX, 0, 255), 0, 255);
+  }
+  if (target >= gAudioLevel) {
+    gAudioLevel = target;                                   // fast attack
+  } else {
+    gAudioLevel = (gAudioLevel > AUDIO_RELEASE) ? gAudioLevel - AUDIO_RELEASE : 0;  // slow release
+  }
+
+  setAllLights(gAudioLevel);
+  fillStrip(colorWheel(gAudioLevel), map(gAudioLevel, 0, 255, 0, NUM_PIXELS));
 }

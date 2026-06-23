@@ -17,7 +17,8 @@ A toggle switch picks the mode:
 
 - **MIDI mode** — the controller listens to MIDI. Notes turn bulbs on/off, Control
   Change messages set brightness, and the MIDI clock drives animations. The NeoPixel
-  strip flashes on every beat as a tempo indicator.
+  strip flashes on every beat as a tempo indicator. An optional **audio-reactive**
+  sub-mode (toggled by a CC) drives brightness from a microphone's loudness instead.
 - **Manual mode** — MIDI is ignored. The rotary encoder sets the brightness of the
   selected bulb; pressing the encoder cycles which bulb (or all of them) it controls.
   The strip shows the current selection (by color) and its brightness (as a bar).
@@ -31,9 +32,16 @@ A toggle switch picks the mode:
 | CC 22 / 23 / 24 / 25 | Brightness of bulb 1 / 2 / 3 / 4 |
 | CC 27 | Brightness of all bulbs at once |
 | CC 26 (≥64 on, <64 off) | Toggle the MIDI-clock light animation |
+| CC 28 (≥64 on, <64 off) | Toggle **audio-reactive** mode (loudness → brightness) |
 | MIDI Clock / Start / Stop / Continue | Beat-synced animation: strip flashes each beat; when CC 26 is on, the bulbs pulse on the beat |
 
 MIDI channel is **15** by default (`MIDI_CHANNEL` in the sketch).
+
+**Audio-reactive mode** (CC 28): while enabled, a microphone amp drives bulb brightness
+from loudness with a VU-style fast-attack/slow-release envelope, and the strip shows the
+level as a bar. It takes over the bulbs and strip (notes/CC and the clock animation are
+suspended) until you turn it off. Tune the response with `AUDIO_PP_MIN` / `AUDIO_PP_MAX`
+(sensitivity) and `AUDIO_RELEASE` (decay speed) in the sketch.
 
 ### Manual mode
 | Control | Action |
@@ -64,6 +72,7 @@ The NeoPixel strip color shows what's selected, and the lit length shows its bri
 - 1x 8-LED NeoPixel (WS2812) strip
 - 1x 2-way toggle switch
 - 1x MIDI female DIN jack
+- 1x Microphone amplifier module (MAX4466 or MAX9814) — for audio-reactive mode
 - 2x 220 ohm resistor
 - 1x 4.7k resistor
 - 1x 1N914 diode
@@ -88,9 +97,15 @@ All control pins are on the Arduino Nano:
 | D12 | Encoder **button** | `INPUT_PULLUP` |
 | A1 (D15) | NeoPixel **DIN** | 8 pixels |
 | A0 (D14) | Mode **switch** | `INPUT_PULLUP`; other switch terminal to GND |
+| A2 | Mic amp module **OUT** | Audio-reactive input; module `VCC`/`GND` to `5V`/`GND` |
 
 Power: dimmer module and NeoPixel `VCC`/`GND` to the Nano's `5V`/`GND`; encoder and
 switch grounds to `GND`.
+
+**Audio input:** use a mic amp module (MAX4466/MAX9814) whose output is already biased
+to ~2.5 V — wire its OUT straight to A2. Do **not** connect a raw line/headphone signal
+directly: it's AC (swings negative) and would need a DC-bias + coupling-cap network
+first. Keep audio wiring away from the AC/dimmer side to avoid picking up noise.
 
 **MIDI input** is an opto-isolated circuit (6N138 + 1N914 + 4.7k + 220 ohm) feeding the
 Nano's RX (D0). See the [SparkFun MIDI tutorial](https://learn.sparkfun.com/tutorials/midi-tutorial/all)
