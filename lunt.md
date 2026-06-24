@@ -60,16 +60,22 @@ The strip shows the selected target by color, and the lit length tracks its brig
 | Press encoder | Next animation (the strip shows the animation number) |
 | Turn encoder | Adjust the current animation's parameter (shown briefly as a blue bar) |
 
-Animations (more to come):
+Animations (more to come). The strip shows the number; the encoder turn adjusts the
+listed parameter:
 
-| # | Animation | Encoder parameter |
-| --- | --- | --- |
-| 1 | Amplitude → brightness | Sensitivity — right = louder affects brightness more |
-| 2 | Amplitude → brightness (low-pass) | Cutoff — right opens up the spectrum, left narrows toward bass |
+| # | Animation | What it does | Encoder parameter |
+| --- | --- | --- | --- |
+| 1 | Amplitude → brightness | All bulbs follow overall loudness | Sensitivity — right = louder affects brightness more |
+| 2 | Amplitude → brightness (low-pass) | Loudness of a low-pass-filtered signal | Cutoff — right opens up the spectrum, left narrows toward bass |
+| 3 | Spectrum split | Bass→bulb 1, low-mid→2, high-mid→3, treble→4 | Sensitivity — right = quieter bands light up |
+| 4 | Beat pulse | Detects bass-energy spikes (kicks) and pulses all bulbs, then fades | Sensitivity — right = triggers more easily |
+| 5 | Breathing | All bulbs follow a heavily smoothed loudness envelope (ambient) | Smoothing — right = slower / smoother |
+| 6 | Sidechain / duck | Bulbs sit bright and dip on loud hits (pumping look) | Depth — right = deeper dip |
 
-Tune the response in the sketch: `AUDIO_PP_MIN` (noise floor), `AUDIO_PP_FULL_MIN/MAX`
-(sensitivity range), `AUDIO_PP_FULL_LPF` (low-pass full-scale), and `AUDIO_RELEASE`
-(decay speed).
+Tune the response in the sketch (`CONFIG / KNOBS` section): `AUDIO_PP_MIN` (noise floor),
+`AUDIO_PP_FULL_*` (full-scale loudness per animation), `AUDIO_RELEASE` (decay speed),
+the `SPLIT_ALPHA*` crossovers (spectrum bands), and the `BEAT_*` constants (beat
+detection).
 
 ## Hardware
 

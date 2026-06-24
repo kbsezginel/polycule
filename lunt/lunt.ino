@@ -54,6 +54,21 @@ const int  AUDIO_PP_FULL_MIN  = 60;         // pp for full brightness at max sen
 const int  AUDIO_PP_FULL_LPF  = 250;        // full-scale pp for the LPF animation
 const byte AUDIO_RELEASE      = 6;          // how fast brightness falls per window (VU)
 const unsigned long AUDIO_PARAM_SHOW_MS = 1200;  // how long the param bar stays up
+// One-pole filter speeds (alpha/256 per sample). These set the spectrum-split
+// crossovers and the beat-detector's bass band; tune if the bands feel off.
+const int  DC_ALPHA           = 2;          // DC blocker (removes the ~2.5V bias)
+const int  SPLIT_ALPHA1       = 8;          // bass | low-mid crossover
+const int  SPLIT_ALPHA2       = 40;         // low-mid | high-mid crossover
+const int  SPLIT_ALPHA3       = 140;        // high-mid | treble crossover
+const int  AUDIO_PP_FULL_SPLIT_MAX = 400;   // per-band full-scale at min sensitivity
+const int  AUDIO_PP_FULL_SPLIT_MIN = 60;    // per-band full-scale at max sensitivity
+const int  BEAT_BASS_ALPHA    = 30;         // bass band used for beat detection
+const int  BEAT_AVG_ALPHA     = 24;         // running-average adaptation per window
+const int  BEAT_PP_MIN        = 25;         // ignore beats quieter than this
+const byte BEAT_DECAY         = 28;         // beat pulse fade per window
+const int  AUDIO_PP_FULL_BREATH = 400;      // full-scale loudness for breathing
+const int  AUDIO_PP_FULL_DUCK   = 400;      // full-scale loudness for sidechain duck
+const byte SIDE_RELEASE       = 8;          // how fast sidechain recovers per window
 
 // -------------------------------- CONTROLLER IO -----------------------------------
 const byte SWITCH_PIN     = A0;   // mode switch  (D14)
@@ -129,16 +144,39 @@ byte gClockCount = 0;
 bool gClockOn = false;             // clock pulse toggle state
 
 // Audio animations.
-enum AudioAnim { ANIM_AMP_BRIGHT, ANIM_AMP_LPF, NUM_AUDIO_ANIMS };
+enum AudioAnim {
+  ANIM_AMP_BRIGHT,   // 1: amplitude -> brightness        (param = sensitivity)
+  ANIM_AMP_LPF,      // 2: amplitude -> brightness w/ LPF  (param = cutoff)
+  ANIM_SPECTRUM,     // 3: 4-band spectrum split           (param = sensitivity)
+  ANIM_BEAT,         // 4: beat pulse                      (param = sensitivity)
+  ANIM_BREATHING,    // 5: smoothed loudness "breathing"   (param = smoothing)
+  ANIM_SIDECHAIN,    // 6: duck (dim on loud)              (param = depth)
+  NUM_AUDIO_ANIMS
+};
 byte gAudioAnim = 0;
-int  gAnimParam[NUM_AUDIO_ANIMS] = {128, 128};   // per-animation parameter, 0..255
+int  gAnimParam[NUM_AUDIO_ANIMS] = {128, 128, 128, 128, 128, 128};  // per-anim, 0..255
 
 // Audio envelope follower (non-blocking: one sample per loop, summarised per window).
 int gAudioMin = 1023;
 int gAudioMax = 0;
 unsigned long gAudioWindowStart = 0;
-byte gAudioLevel = 0;
-int  gLpfState = 512;              // one-pole low-pass state (centered at mid-rail)
+byte gAudioLevel = 0;             // single-bulb output level (anims 1, 2, 6)
+int  gLpfState = 512;             // one-pole low-pass state (anim 2)
+
+// Spectrum split (anim 3): DC blocker + 3 crossover low-passes + per-band peaks.
+int  gDc = 512;
+int  gLp1 = 0, gLp2 = 0, gLp3 = 0;
+int  gBandPeak[4]  = {0, 0, 0, 0};
+byte gBandLevel[4] = {0, 0, 0, 0};
+
+// Beat pulse (anim 4).
+int  gBassLp = 0;
+int  gBeatPeak = 0;
+long gBeatAvg = 0;
+byte gBeatLevel = 0;
+
+// Breathing (anim 5).
+int  gBreathLevel = 0;
 
 // Audio strip display (shows the animation number, briefly the parameter on a turn).
 bool gAudioStripDirty = true;
@@ -408,56 +446,157 @@ void onBeat() {
 // AUDIO MODE
 // ----------------------------------------------------------------------------------
 void resetAudioEnvelope() {
-  gAudioLevel = 0;
   gAudioMin = 1023;
   gAudioMax = 0;
+  gAudioLevel = 0;
   gAudioWindowStart = millis();
   gLpfState = 512;
+  gDc = 512;
+  gLp1 = gLp2 = gLp3 = 0;
+  for (byte i = 0; i < 4; i++) { gBandPeak[i] = 0; gBandLevel[i] = 0; }
+  gBassLp = 0;
+  gBeatPeak = 0;
+  gBeatAvg = 0;
+  gBeatLevel = 0;
+  gBreathLevel = 0;
 }
 
-// Non-blocking envelope follower. Samples once per loop and, once per window, maps the
-// peak-to-peak loudness to brightness with a fast attack / slow release. The active
-// animation chooses how the signal is conditioned and what the encoder parameter does.
+// One-pole IIR: state moves toward input by alpha/256 each step.
+int onePole(int state, int input, int alpha) {
+  return state + (int)(((long)(input - state) * alpha) >> 8);
+}
+
+void resetMinMax() {
+  gAudioMin = 1023;
+  gAudioMax = 0;
+}
+
+// Map this window's peak-to-peak loudness to a level with fast attack / slow release,
+// updating the shared single-bulb level. Used by the amplitude-style animations.
+byte envFollow(int pp, int ppFull) {
+  if (ppFull <= AUDIO_PP_MIN) ppFull = AUDIO_PP_MIN + 1;
+  byte target = (pp > AUDIO_PP_MIN)
+                  ? (byte)constrain(map(pp, AUDIO_PP_MIN, ppFull, 0, 255), 0, 255)
+                  : 0;
+  if (target >= gAudioLevel) {
+    gAudioLevel = target;                                                   // fast attack
+  } else {
+    gAudioLevel = (gAudioLevel > AUDIO_RELEASE) ? gAudioLevel - AUDIO_RELEASE : 0;  // release
+  }
+  return gAudioLevel;
+}
+
+// Non-blocking: sample once per loop (per-animation conditioning), then once per window
+// turn the gathered features into bulb brightness.
 void updateAudio() {
   int sample = analogRead(AUDIO_PIN);
 
-  int value = sample;
-  if (gAudioAnim == ANIM_AMP_LPF) {
-    // One-pole low-pass; alpha (4..256)/256 set by the encoder. Higher param = higher
-    // cutoff (more of the spectrum); lower param = bass only.
-    int alpha = map(gAnimParam[ANIM_AMP_LPF], 0, 255, 4, 256);
-    gLpfState += (int)(((long)(sample - gLpfState) * alpha) >> 8);
-    value = gLpfState;
+  // ---- per-sample conditioning ----
+  switch (gAudioAnim) {
+    case ANIM_AMP_LPF: {
+      int alpha = map(gAnimParam[ANIM_AMP_LPF], 0, 255, 4, 256);  // right = higher cutoff
+      gLpfState = onePole(gLpfState, sample, alpha);
+      if (gLpfState > gAudioMax) gAudioMax = gLpfState;
+      if (gLpfState < gAudioMin) gAudioMin = gLpfState;
+      break;
+    }
+    case ANIM_SPECTRUM: {
+      gDc = onePole(gDc, sample, DC_ALPHA);
+      int ac = sample - gDc;                       // bias removed
+      gLp1 = onePole(gLp1, ac, SPLIT_ALPHA1);
+      gLp2 = onePole(gLp2, ac, SPLIT_ALPHA2);
+      gLp3 = onePole(gLp3, ac, SPLIT_ALPHA3);
+      int e;
+      e = abs(gLp1);          if (e > gBandPeak[0]) gBandPeak[0] = e;  // bass
+      e = abs(gLp2 - gLp1);   if (e > gBandPeak[1]) gBandPeak[1] = e;  // low-mid
+      e = abs(gLp3 - gLp2);   if (e > gBandPeak[2]) gBandPeak[2] = e;  // high-mid
+      e = abs(ac - gLp3);     if (e > gBandPeak[3]) gBandPeak[3] = e;  // treble
+      break;
+    }
+    case ANIM_BEAT: {
+      gDc = onePole(gDc, sample, DC_ALPHA);
+      gBassLp = onePole(gBassLp, sample - gDc, BEAT_BASS_ALPHA);
+      int e = abs(gBassLp);
+      if (e > gBeatPeak) gBeatPeak = e;
+      break;
+    }
+    default: {                                     // AMP_BRIGHT, BREATHING, SIDECHAIN
+      if (sample > gAudioMax) gAudioMax = sample;
+      if (sample < gAudioMin) gAudioMin = sample;
+      break;
+    }
   }
-  if (value > gAudioMax) gAudioMax = value;
-  if (value < gAudioMin) gAudioMin = value;
 
   if (millis() - gAudioWindowStart < AUDIO_WINDOW_MS) {
     return;
   }
-  int pp = gAudioMax - gAudioMin;        // amplitude over the window
-  gAudioMin = 1023;
-  gAudioMax = 0;
   gAudioWindowStart = millis();
 
-  // Full-scale loudness: for the amplitude animation the encoder sets sensitivity
-  // (higher param -> smaller pp reaches full); the LPF animation uses a fixed scale.
-  int ppFull = (gAudioAnim == ANIM_AMP_BRIGHT)
-                 ? map(gAnimParam[ANIM_AMP_BRIGHT], 0, 255, AUDIO_PP_FULL_MAX, AUDIO_PP_FULL_MIN)
-                 : AUDIO_PP_FULL_LPF;
-  if (ppFull <= AUDIO_PP_MIN) ppFull = AUDIO_PP_MIN + 1;
-
-  byte target = 0;
-  if (pp > AUDIO_PP_MIN) {
-    target = (byte)constrain(map(pp, AUDIO_PP_MIN, ppFull, 0, 255), 0, 255);
+  // ---- per-window output ----
+  switch (gAudioAnim) {
+    case ANIM_AMP_BRIGHT: {
+      int pp = gAudioMax - gAudioMin; resetMinMax();
+      int ppFull = map(gAnimParam[ANIM_AMP_BRIGHT], 0, 255, AUDIO_PP_FULL_MAX, AUDIO_PP_FULL_MIN);
+      setAllLights(envFollow(pp, ppFull));
+      break;
+    }
+    case ANIM_AMP_LPF: {
+      int pp = gAudioMax - gAudioMin; resetMinMax();
+      setAllLights(envFollow(pp, AUDIO_PP_FULL_LPF));
+      break;
+    }
+    case ANIM_SPECTRUM: {
+      int ppFull = map(gAnimParam[ANIM_SPECTRUM], 0, 255,
+                       AUDIO_PP_FULL_SPLIT_MAX, AUDIO_PP_FULL_SPLIT_MIN);
+      if (ppFull <= AUDIO_PP_MIN) ppFull = AUDIO_PP_MIN + 1;
+      for (byte i = 0; i < NUM_LIGHTS; i++) {
+        byte t = (gBandPeak[i] > AUDIO_PP_MIN)
+                   ? (byte)constrain(map(gBandPeak[i], AUDIO_PP_MIN, ppFull, 0, 255), 0, 255)
+                   : 0;
+        gBandLevel[i] = (t >= gBandLevel[i]) ? t
+                          : (gBandLevel[i] > AUDIO_RELEASE ? gBandLevel[i] - AUDIO_RELEASE : 0);
+        setLight(i, gBandLevel[i]);
+        gBandPeak[i] = 0;
+      }
+      break;
+    }
+    case ANIM_BEAT: {
+      int energy = gBeatPeak; gBeatPeak = 0;
+      long prevAvg = gBeatAvg;
+      gBeatAvg = onePole((int)gBeatAvg, energy, BEAT_AVG_ALPHA);   // adapt slowly
+      int factor16 = map(gAnimParam[ANIM_BEAT], 0, 255, 28, 17);   // right = more sensitive
+      if (energy > BEAT_PP_MIN && (long)energy * 16 > prevAvg * factor16) {
+        gBeatLevel = 255;                                          // beat -> snap bright
+      } else {
+        gBeatLevel = (gBeatLevel > BEAT_DECAY) ? gBeatLevel - BEAT_DECAY : 0;  // fade
+      }
+      setAllLights(gBeatLevel);
+      break;
+    }
+    case ANIM_BREATHING: {
+      int pp = gAudioMax - gAudioMin; resetMinMax();
+      int target = (pp > AUDIO_PP_MIN)
+                     ? constrain(map(pp, AUDIO_PP_MIN, AUDIO_PP_FULL_BREATH, 0, 255), 0, 255) : 0;
+      int alpha = map(gAnimParam[ANIM_BREATHING], 0, 255, 64, 4);  // right = smoother/slower
+      gBreathLevel = onePole(gBreathLevel, target, alpha);
+      setAllLights(gBreathLevel);
+      break;
+    }
+    case ANIM_SIDECHAIN: {
+      int pp = gAudioMax - gAudioMin; resetMinMax();
+      int loud = (pp > AUDIO_PP_MIN)
+                   ? constrain(map(pp, AUDIO_PP_MIN, AUDIO_PP_FULL_DUCK, 0, 255), 0, 255) : 0;
+      int duck = (int)((long)loud * gAnimParam[ANIM_SIDECHAIN] / 255);   // right = deeper duck
+      int target = 255 - duck;
+      if (target < gAudioLevel) {
+        gAudioLevel = target;                                     // dip fast on loud
+      } else {
+        gAudioLevel = min(255, gAudioLevel + SIDE_RELEASE);       // recover slowly
+      }
+      setAllLights(gAudioLevel);
+      break;
+    }
   }
-  if (target >= gAudioLevel) {
-    gAudioLevel = target;                                   // fast attack
-  } else {
-    gAudioLevel = (gAudioLevel > AUDIO_RELEASE) ? gAudioLevel - AUDIO_RELEASE : 0;  // slow release
-  }
-
-  setAllLights(gAudioLevel);
 }
 
 // A distinct hue per animation, so the number is also color-coded.
