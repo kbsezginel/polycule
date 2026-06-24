@@ -61,8 +61,8 @@ The strip is **red**. Each of the 8 animations sits on one of the 8 pixels.
 
 **MIDI clock:** when a clock is running, the animation beat-locks and the encoder selects
 the subdivision — **1 bar · 1/2 · 1/4 · 1/8 · 1/16** (shown as 1–5 red pixels). With no
-clock, the encoder sets a free speed (shown as a 1–8 red bar). MIDI notes/CC are ignored
-in ANIMATION mode.
+clock, the encoder sets a free speed of **40–250 BPM** (shown as a 1–8 red bar). MIDI
+notes/CC are ignored in ANIMATION mode.
 
 ## Hardware
 
@@ -167,8 +167,8 @@ working range, not the data-type limit.
 ### Animation timing
 | Variable | Value | Range | Description |
 | --- | --- | --- | --- |
-| `UNIT_MS_MIN` | 80 | 20–300 | Free-run unit at full speed (one step / one cycle). |
-| `UNIT_MS_MAX` | 2000 | 500–5000 | Free-run unit at the slowest speed. |
+| `ANIM_BPM_MIN` | 40 | 20–120 | Free-run speed (BPM) at encoder fully left. One beat = one step / one cycle. |
+| `ANIM_BPM_MAX` | 250 | 120–600 | Free-run speed (BPM) at encoder fully right. The knob is linear in BPM. |
 | `TAIL_SHIFT` | 2 | 1–4 | Comet/larson/twinkle tail fade: `b -= b >> this` (smaller = longer tail). |
 | `CLOCK_TIMEOUT_MS` | 600 | 300–2000 | Clock is treated as absent (→ free speed) after this gap. |
 

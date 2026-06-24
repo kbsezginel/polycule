@@ -39,10 +39,10 @@ const byte NOTE_MIN_BRIGHT = 40;                 // softest visible "on" level
 const byte CC_LIGHT[4]     = {22, 23, 24, 25};
 const byte CC_ALL_BRIGHT   = 27;                 // brightness of all lights at once
 
-// Animation timing. Free-run unit (encoder speed) ranges between these; one "unit" is
-// one step (stepwise anims) or one cycle (continuous anims).
-const unsigned long UNIT_MS_MIN = 80;            // fastest (encoder fully right)
-const unsigned long UNIT_MS_MAX = 2000;          // slowest (encoder fully left)
+// Animation timing. Free-run speed maps (linearly in BPM) to a "unit" = one step
+// (stepwise anims) or one cycle (continuous anims), treating one unit as a beat.
+const int  ANIM_BPM_MIN = 40;                    // encoder fully left  (slowest)
+const int  ANIM_BPM_MAX = 250;                   // encoder fully right (fastest)
 const byte TAIL_SHIFT = 2;                       // comet/larson/twinkle fade: b -= b >> this
 
 // Strip feedback timing.
@@ -400,7 +400,8 @@ unsigned long animUnitMs() {
     long ms = (long)(SUBDIV_BEATS[gAnimSubdiv[gAnimSel]] * gBeatMs);
     return max(20L, ms);
   }
-  return map(gAnimSpeed[gAnimSel], 0, 255, UNIT_MS_MAX, UNIT_MS_MIN);  // right = faster
+  int bpm = map(gAnimSpeed[gAnimSel], 0, 255, ANIM_BPM_MIN, ANIM_BPM_MAX);  // right = faster
+  return 60000UL / bpm;                                                     // one unit = one beat
 }
 
 void updateAnim() {
