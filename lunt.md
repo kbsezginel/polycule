@@ -35,8 +35,12 @@ MIDI also drives brightness here (channel **15** by default, `MIDI_CHANNEL` in t
 | CC 22 / 23 / 24 / 25 | Brightness of bulb 1 / 2 / 3 / 4 |
 | CC 27 | Brightness of all bulbs at once |
 
-The strip is **warm yellow**: **ALL** lights every pixel, **Light N** lights the Nth pixel.
-While you turn the encoder it shows a brightness bar, then reverts to the pixel number.
+The strip is **warm yellow**: **ALL** lights every pixel, **Light N** lights the Nth
+pixel (counted from the left). While you turn the encoder it shows a brightness bar,
+then reverts to the pixel number.
+
+Entering MANUAL mode resets all bulbs to **mid brightness** (`MANUAL_RESET_BRIGHTNESS`),
+so nothing stays stuck at whatever level an animation left it.
 
 ### ANIMATION mode
 The strip is **red**. Each of the 8 animations sits on one of the 8 pixels.
@@ -145,6 +149,7 @@ working range, not the data-type limit.
 | `ANIM_MODE_LEVEL` | `LOW` | `LOW` / `HIGH` | Switch level that selects ANIMATION (the other position is MANUAL). |
 | `ENCODER_STEP` | 8 | 1–32 | Brightness / free-speed change per encoder detent. |
 | `BUTTON_DEBOUNCE_MS` | 200 | 50–500 | Minimum ms between accepted encoder-button presses. |
+| `MANUAL_RESET_BRIGHTNESS` | 128 | 0–255 | All bulbs reset to this level when MANUAL mode is entered. |
 
 ### MIDI (MANUAL mode)
 | Variable | Value | Range | Description |

@@ -30,6 +30,7 @@
 
 const int  ENCODER_STEP   = 8;     // brightness / free-speed change per encoder detent
 const unsigned long BUTTON_DEBOUNCE_MS = 200;
+const byte MANUAL_RESET_BRIGHTNESS = 128;   // all bulbs reset to this on entering MANUAL
 
 // MIDI note -> light mapping (MANUAL mode). Note ON sets brightness from velocity,
 // Note OFF turns the light fully off.
@@ -241,6 +242,7 @@ void onModeChange() {
   if (gMode == MODE_MANUAL) {
     gSelected = 0;
     gManualBrightActive = false;
+    setAllLights(MANUAL_RESET_BRIGHTNESS);   // clean slate (no bulbs stuck from an anim)
   } else {
     gAnimRunning = false;          // start in the selection menu
   }
@@ -478,13 +480,17 @@ void clearStrip() {
   ledStrip.show();
 }
 
+// Logical pixel 0 is the far-left LED. The strip's data-in end is physically on the
+// right, so map logical -> physical in reverse here.
 void fillPixels(uint32_t color, byte litCount) {
-  for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, i < litCount ? color : 0);
+  for (byte i = 0; i < NUM_PIXELS; i++)
+    ledStrip.setPixelColor(i, i >= (NUM_PIXELS - litCount) ? color : 0);
   ledStrip.show();
 }
 
 void lightOnePixel(byte index, uint32_t color) {
-  for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, i == index ? color : 0);
+  byte phys = NUM_PIXELS - 1 - index;
+  for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, i == phys ? color : 0);
   ledStrip.show();
 }
 
