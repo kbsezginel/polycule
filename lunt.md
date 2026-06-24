@@ -1,11 +1,10 @@
 # Lunt
 MIDI-enabled controller for dimmable AC light bulbs, with on-device manual control.
 
-Lunt drives up to four 110/220 V dimmable bulbs through an AC dimmer module. It runs
-in two modes selected by a toggle switch: a **MIDI mode** that turns the bulbs into a
-light instrument driven from a keyboard/DAW, and a **manual mode** that lets you set
-each bulb's brightness by hand with a rotary encoder. An 8-LED NeoPixel strip is the
-on-device display.
+Lunt drives up to four 110/220 V dimmable bulbs through an AC dimmer module. A toggle
+switch selects between **MIDI+MANUAL** (drive the bulbs from a keyboard/DAW and/or by
+hand with the rotary encoder) and **AUDIO** (react to a microphone). An 8-LED NeoPixel
+strip is the on-device display.
 
 ## How it works
 An Arduino Nano reads incoming MIDI on its hardware serial port and controls the four
@@ -13,52 +12,64 @@ channels of an [AC Light Dimmer Module](https://robotdyn.com/ac-light-dimmer-mod
 via phase-cut dimming (the [Dimmable Light](https://github.com/fabianoriccardi/dimmable-light)
 library, synced to the AC zero-cross on D2).
 
-A toggle switch picks the mode:
+The toggle switch picks the mode:
 
-- **MIDI mode** — the controller listens to MIDI. Notes turn bulbs on/off, Control
-  Change messages set brightness, and the MIDI clock drives animations. The NeoPixel
-  strip flashes on every beat as a tempo indicator. An optional **audio-reactive**
-  sub-mode (toggled by a CC) drives brightness from a microphone's loudness instead.
-- **Manual mode** — MIDI is ignored. The rotary encoder sets the brightness of the
-  selected bulb; pressing the encoder cycles which bulb (or all of them) it controls.
-  The strip shows the current selection (by color) and its brightness (as a bar).
+- **MIDI+MANUAL** — MIDI and the rotary encoder are both live. Turn the encoder to set
+  the selected bulb's brightness and press it to choose the target; meanwhile incoming
+  MIDI notes/CC also drive the bulbs. The strip shows the selected target (color) and
+  its brightness (bar).
+- **AUDIO** — MIDI is ignored; the bulbs react to a microphone. Press the encoder to
+  pick an animation (its number shows on the strip) and turn the encoder to adjust that
+  animation's parameter.
 
 ## Controls
 
-### MIDI mode
+### MIDI+MANUAL mode
+Encoder:
+
+| Control | Action |
+| --- | --- |
+| Turn encoder right | Brighter (selected bulb / ALL) |
+| Turn encoder left | Dimmer |
+| Press encoder | Cycle the target: **ALL → 1 → 2 → 3 → 4 → ALL** (defaults to ALL) |
+
+MIDI (channel **15** by default, `MIDI_CHANNEL` in the sketch):
+
 | Message | Mapping |
 | --- | --- |
 | Note On / Off `C4`–`D#4` (60–63) | Turn bulbs 1–4 on/off (Note On velocity sets the on-brightness, Note Off turns it fully off) |
 | CC 22 / 23 / 24 / 25 | Brightness of bulb 1 / 2 / 3 / 4 |
 | CC 27 | Brightness of all bulbs at once |
-| CC 26 (≥64 on, <64 off) | Toggle the MIDI-clock light animation |
-| CC 28 (≥64 on, <64 off) | Toggle **audio-reactive** mode (loudness → brightness) |
-| MIDI Clock / Start / Stop / Continue | Beat-synced animation: strip flashes each beat; when CC 26 is on, the bulbs pulse on the beat |
+| CC 26 (≥64 on, <64 off) | Pulse the bulbs on the MIDI beat (clock) |
 
-MIDI channel is **15** by default (`MIDI_CHANNEL` in the sketch).
+The strip shows the selected target by color, and the lit length tracks its brightness
+(from either source):
 
-**Audio-reactive mode** (CC 28): while enabled, a microphone amp drives bulb brightness
-from loudness with a VU-style fast-attack/slow-release envelope, and the strip shows the
-level as a bar. It takes over the bulbs and strip (notes/CC and the clock animation are
-suspended) until you turn it off. Tune the response with `AUDIO_PP_MIN` / `AUDIO_PP_MAX`
-(sensitivity) and `AUDIO_RELEASE` (decay speed) in the sketch.
-
-### Manual mode
-| Control | Action |
-| --- | --- |
-| Turn encoder right | Brighter |
-| Turn encoder left | Dimmer |
-| Press encoder | Cycle the selection: **ALL → 1 → 2 → 3 → 4 → ALL** (defaults to ALL on entry) |
-
-The NeoPixel strip color shows what's selected, and the lit length shows its brightness:
-
-| Selection | Strip color |
+| Target | Strip color |
 | --- | --- |
 | ALL bulbs | ⚪ White |
 | Bulb 1 | 🔴 Red |
 | Bulb 2 | 🟢 Green |
 | Bulb 3 | 🔵 Blue |
 | Bulb 4 | 🟠 Amber |
+
+### AUDIO mode
+
+| Control | Action |
+| --- | --- |
+| Press encoder | Next animation (the strip shows the animation number) |
+| Turn encoder | Adjust the current animation's parameter (shown briefly as a blue bar) |
+
+Animations (more to come):
+
+| # | Animation | Encoder parameter |
+| --- | --- | --- |
+| 1 | Amplitude → brightness | Sensitivity — right = louder affects brightness more |
+| 2 | Amplitude → brightness (low-pass) | Cutoff — right opens up the spectrum, left narrows toward bass |
+
+Tune the response in the sketch: `AUDIO_PP_MIN` (noise floor), `AUDIO_PP_FULL_MIN/MAX`
+(sensitivity range), `AUDIO_PP_FULL_LPF` (low-pass full-scale), and `AUDIO_RELEASE`
+(decay speed).
 
 ## Hardware
 
@@ -72,7 +83,7 @@ The NeoPixel strip color shows what's selected, and the lit length shows its bri
 - 1x 8-LED NeoPixel (WS2812) strip
 - 1x 2-way toggle switch
 - 1x MIDI female DIN jack
-- 1x Microphone amplifier module (MAX4466 or MAX9814) — for audio-reactive mode
+- 1x Microphone amplifier module (MAX4466 or MAX9814) — for AUDIO mode
 - 2x 220 ohm resistor
 - 1x 4.7k resistor
 - 1x 1N914 diode
@@ -111,9 +122,9 @@ first. Keep audio wiring away from the AC/dimmer side to avoid picking up noise.
 Nano's RX (D0). See the [SparkFun MIDI tutorial](https://learn.sparkfun.com/tutorials/midi-tutorial/all)
 for the standard input schematic.
 
-**Mode switch logic:** with the internal pull-up, the switch idles HIGH and reads LOW
-when closed to GND. The build treats one position as MIDI mode and the other as manual
-mode — flip `MIDI_MODE_LEVEL` in the sketch if your two modes come out reversed.
+**Mode switch logic:** with the internal pull-up, the switch idles HIGH (= MIDI+MANUAL)
+and reads LOW when closed to GND (= AUDIO). Flip `AUDIO_MODE_LEVEL` in the sketch if
+your two modes come out reversed.
 
 ## Software
 
@@ -121,8 +132,9 @@ mode — flip `MIDI_MODE_LEVEL` in the sketch if your two modes come out reverse
 [Lunt Arduino script.](https://github.com/kbsezginel/polycule/blob/master/lunt/lunt.ino)
 
 Adjustable knobs are grouped in the `CONFIG / KNOBS` section at the top of the sketch:
-mode-switch polarity (`MIDI_MODE_LEVEL`), encoder step size (`ENCODER_STEP`), the
-note/CC numbers, and the default state of the clock animation (`gClockAnim`).
+mode-switch polarity (`AUDIO_MODE_LEVEL`), encoder step sizes (`ENCODER_STEP` /
+`AUDIO_PARAM_STEP`), the note/CC numbers, the clock-pulse default (`gClockAnim`), and
+the audio response (`AUDIO_*`).
 
 ### Libraries
 Install via the Arduino Library Manager:

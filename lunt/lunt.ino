@@ -1,50 +1,59 @@
 // ----------------------------------------------------------------------------------
 // POLYCULE | LUNT | MIDI-enabled light controller
 // ----------------------------------------------------------------------------------
-// Arduino Nano + RobotDyn 4-channel AC dimmer + rotary encoder + 8px NeoPixel strip.
+// Arduino Nano + RobotDyn 4-channel AC dimmer + rotary encoder + 8px NeoPixel strip
+// + microphone amp module.
 //
-// MODE is chosen by the SWITCH:
-//   * MIDI mode   -> listen to MIDI: notes turn lights ON/OFF, CC sets brightness,
-//                    MIDI clock drives animations. Strip blinks in time with clock.
-//   * MANUAL mode -> rotary encoder sets brightness of the selected light.
-//                    Press the encoder to cycle: Light1 -> 2 -> 3 -> 4 -> ALL.
-//                    Strip shows the selected light (color) + its brightness (bar).
+// The SWITCH chooses one of two top-level modes:
+//
+//   * MIDI+MANUAL -> MIDI and the encoder are both live.
+//       - Encoder turn  : set brightness of the selected bulb.
+//       - Encoder press : cycle the target ALL -> 1 -> 2 -> 3 -> 4 -> ALL.
+//       - Incoming MIDI : notes turn bulbs on/off, CC sets brightness, clock can pulse.
+//       - Strip shows the selected target (color) + its brightness (bar).
+//
+//   * AUDIO -> react to a microphone; MIDI is ignored.
+//       - Encoder press : select the animation (number shown on the strip).
+//       - Encoder turn  : adjust the current animation's parameter (shown briefly).
+//       Animations:
+//         0) amplitude -> brightness        (encoder = sensitivity)
+//         1) amplitude -> brightness w/ LPF (encoder = low-pass cutoff / spectrum)
 // ----------------------------------------------------------------------------------
 #include <MIDI.h>
 #include <Adafruit_NeoPixel.h>
 #include "dimmable_light.h"
 
 // ================================ CONFIG / KNOBS ==================================
-// Which switch level means "MIDI mode". Switch is INPUT_PULLUP, so it idles HIGH and
-// reads LOW when closed to GND. If your two modes feel reversed, flip HIGH <-> LOW.
-#define MIDI_MODE_LEVEL   HIGH
+// Switch level that selects AUDIO mode. The switch is INPUT_PULLUP, so it idles HIGH
+// (= MIDI+MANUAL) and reads LOW when closed to GND (= AUDIO). Flip if reversed.
+#define AUDIO_MODE_LEVEL   LOW
 
-// Encoder feel: brightness change (0-255) applied per detent (one click of the knob).
-const int  ENCODER_STEP     = 8;
+// Encoder feel (per detent / click of the knob).
+const int  ENCODER_STEP      = 8;   // brightness change in MIDI+MANUAL mode
+const int  AUDIO_PARAM_STEP  = 8;   // animation-parameter change in AUDIO mode
 
 // MIDI note -> light mapping (one note per light). Note ON sets brightness from
 // velocity, Note OFF turns the light fully off.
 const byte NOTE_LIGHT[4]    = {60, 61, 62, 63};   // C4, C#4, D4, D#4
 const byte NOTE_MIN_BRIGHT  = 40;                 // softest visible "on" level
 
-// MIDI CC -> light brightness mapping, plus a couple of control CCs.
+// MIDI CC -> light brightness mapping, plus a control CC.
 const byte CC_LIGHT[4]      = {22, 23, 24, 25};
 const byte CC_ALL_BRIGHT    = 27;                 // brightness of all lights at once
-const byte CC_CLOCK_ANIM    = 26;                 // >=64 enables clock light animation
-const byte CC_AUDIO_REACT   = 28;                 // >=64 enables audio-reactive mode
+const byte CC_CLOCK_ANIM    = 26;                 // >=64 pulses bulbs on the MIDI beat
 
-// Set true to let the MIDI clock drive the LIGHTS by default (otherwise the clock
-// only animates the NeoPixel strip and notes/CC keep direct control of the lights).
+// Set true to let the MIDI clock pulse the bulbs on every beat by default.
 bool gClockAnim = false;
 
-// Audio-reactive (loudness -> brightness), active in MIDI mode while enabled. Feed a
-// mic amp module (MAX4466/MAX9814, output already biased to ~2.5V) into AUDIO_PIN.
-bool gAudioReactive = false;
-const byte AUDIO_PIN = A2;
-const unsigned long AUDIO_WINDOW_MS = 25;   // amplitude is measured over this window
-const int  AUDIO_PP_MIN = 20;               // peak-to-peak below this = silence (off)
-const int  AUDIO_PP_MAX = 400;              // peak-to-peak that maps to full brightness
-const byte AUDIO_RELEASE = 6;               // how fast brightness falls per window (VU)
+// --- Audio (mic amp module on AUDIO_PIN, output biased to ~2.5V; e.g. MAX4466) -----
+const byte AUDIO_PIN          = A2;
+const unsigned long AUDIO_WINDOW_MS = 25;   // loudness is measured over this window
+const int  AUDIO_PP_MIN       = 20;         // peak-to-peak below this = silence (off)
+const int  AUDIO_PP_FULL_MAX  = 800;        // pp for full brightness at min sensitivity
+const int  AUDIO_PP_FULL_MIN  = 60;         // pp for full brightness at max sensitivity
+const int  AUDIO_PP_FULL_LPF  = 250;        // full-scale pp for the LPF animation
+const byte AUDIO_RELEASE      = 6;          // how fast brightness falls per window (VU)
+const unsigned long AUDIO_PARAM_SHOW_MS = 1200;  // how long the param bar stays up
 
 // -------------------------------- CONTROLLER IO -----------------------------------
 const byte SWITCH_PIN     = A0;   // mode switch  (D14)
@@ -79,10 +88,12 @@ const byte NUM_PIXELS = 8;
 Adafruit_NeoPixel ledStrip = Adafruit_NeoPixel(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // -------------------------------- STATE / RUNTIME ---------------------------------
-bool gMidiMode = false;            // current mode (set in setup)
-bool gStripDirty = true;           // manual-mode strip needs redraw
+enum TopMode { MODE_MIDI_MANUAL, MODE_AUDIO };
+TopMode gMode = MODE_MIDI_MANUAL;
 
-// Manual-mode selection: 0 = ALL lights (the default), 1..4 = single light.
+bool gStripDirty = true;           // MIDI+MANUAL strip needs redraw
+
+// MIDI+MANUAL selection: 0 = ALL lights (the default), 1..4 = single light.
 // Pressing the encoder cycles ALL -> 1 -> 2 -> 3 -> 4 -> ALL.
 byte gSelected = 0;
 bool gButtonLast = false;
@@ -112,21 +123,27 @@ const unsigned char ENCODER_TABLE[7][4] = {
 };
 unsigned char gEncoderState = R_START;
 
-// MIDI clock / beat tracking.
+// MIDI clock / beat tracking (MIDI+MANUAL mode).
 const byte PPQN = 24;              // MIDI clock pulses per quarter note
 byte gClockCount = 0;
-bool gClockOn = false;             // clock light-animation toggle state
-byte gBeatColorIdx = 0;            // color cycled per beat on the strip
-bool gBeatFlashActive = false;
-unsigned long gBeatFlashStart = 0;
-const unsigned long BEAT_FLASH_MS = 70;
+bool gClockOn = false;             // clock pulse toggle state
 
-// Audio-reactive envelope follower (non-blocking: one sample per loop, summarised
-// once per AUDIO_WINDOW_MS).
+// Audio animations.
+enum AudioAnim { ANIM_AMP_BRIGHT, ANIM_AMP_LPF, NUM_AUDIO_ANIMS };
+byte gAudioAnim = 0;
+int  gAnimParam[NUM_AUDIO_ANIMS] = {128, 128};   // per-animation parameter, 0..255
+
+// Audio envelope follower (non-blocking: one sample per loop, summarised per window).
 int gAudioMin = 1023;
 int gAudioMax = 0;
 unsigned long gAudioWindowStart = 0;
 byte gAudioLevel = 0;
+int  gLpfState = 512;              // one-pole low-pass state (centered at mid-rail)
+
+// Audio strip display (shows the animation number, briefly the parameter on a turn).
+bool gAudioStripDirty = true;
+bool gShowingParam = false;
+unsigned long gAudioParamUntil = 0;
 
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
@@ -154,7 +171,7 @@ void setup() {
   DimmableLight::setSyncPin(DIM_SYNC_PIN);
   DimmableLight::begin();
 
-  gMidiMode = (digitalRead(SWITCH_PIN) == MIDI_MODE_LEVEL);
+  gMode = readModeSwitch();
   onModeChange();
 }
 
@@ -162,39 +179,42 @@ void setup() {
 // >x< LOOP >x<
 // ----------------------------------------------------------------------------------
 void loop() {
-  bool midiMode = (digitalRead(SWITCH_PIN) == MIDI_MODE_LEVEL);
-  if (midiMode != gMidiMode) {
-    gMidiMode = midiMode;
+  TopMode mode = readModeSwitch();
+  if (mode != gMode) {
+    gMode = mode;
     onModeChange();
   }
 
-  if (gMidiMode) {
-    MIDI.read();          // fires the note/CC/clock handlers above
-    if (gAudioReactive) {
-      updateAudioBrightness();   // audio drives the lights + a VU bar on the strip
-    } else {
-      updateBeatFlash();         // clears the strip flash after BEAT_FLASH_MS
-    }
-  } else {
-    handleEncoder();
-    handleEncoderButton();
+  // The encoder is polled every loop in both modes (the decoder needs frequent reads).
+  handleEncoder();
+  handleButton();
+
+  if (gMode == MODE_MIDI_MANUAL) {
+    MIDI.read();                                  // notes/CC/clock drive the bulbs
     if (gStripDirty) {
       drawManualStrip();
       gStripDirty = false;
     }
+  } else {                                        // MODE_AUDIO (MIDI ignored)
+    updateAudio();                                // current animation drives the bulbs
+    updateAudioStrip();                           // animation number / parameter
   }
+}
+
+TopMode readModeSwitch() {
+  return (digitalRead(SWITCH_PIN) == AUDIO_MODE_LEVEL) ? MODE_AUDIO : MODE_MIDI_MANUAL;
 }
 
 // Called once whenever the switch flips between modes.
 void onModeChange() {
-  if (gMidiMode) {
-    gClockCount = 0;
-    gBeatFlashActive = false;
-    clearStrip();
+  gEncoderState = R_START;            // start the decoder fresh
+  if (gMode == MODE_MIDI_MANUAL) {
+    gSelected = 0;                    // default to ALL lights
+    gStripDirty = true;              // redraw selection + brightness bar
   } else {
-    gSelected = 0;             // entering manual mode defaults to ALL lights
-    gEncoderState = R_START;   // start the decoder fresh
-    gStripDirty = true;        // redraw selection + brightness bar
+    resetAudioEnvelope();
+    gShowingParam = false;
+    gAudioStripDirty = true;         // draw the animation number
   }
 }
 
@@ -205,6 +225,7 @@ void setLight(byte index, int value) {
   value = constrain(value, 0, 255);
   gBrightness[index] = (byte)value;
   gLights[index]->setBrightness((byte)value);
+  gStripDirty = true;               // keep the MIDI+MANUAL bar in sync with any source
 }
 
 void setAllLights(int value) {
@@ -214,7 +235,7 @@ void setAllLights(int value) {
 }
 
 // ----------------------------------------------------------------------------------
-// ROTARY ENCODER (MANUAL MODE)
+// ROTARY ENCODER (both modes)
 // ----------------------------------------------------------------------------------
 // Poll both encoder pins and feed them through the state table. Returns DIR_CW,
 // DIR_CCW once per detent, or DIR_NONE for intermediate / bounce transitions.
@@ -229,24 +250,36 @@ void handleEncoder() {
   if (dir == DIR_NONE) {
     return;
   }
-  // Signs chosen so turning the knob right brightens. If yours is reversed, swap them.
-  int delta = (dir == DIR_CW) ? -ENCODER_STEP : ENCODER_STEP;
-  if (gSelected == 0) {                     // ALL selected
-    for (byte i = 0; i < NUM_LIGHTS; i++) {
-      setLight(i, gBrightness[i] + delta);
+  // DIR_CW maps to a left turn on this wiring, so right (DIR_CCW) increases.
+  bool right = (dir == DIR_CCW);
+
+  if (gMode == MODE_MIDI_MANUAL) {
+    int delta = right ? ENCODER_STEP : -ENCODER_STEP;     // right brightens
+    if (gSelected == 0) {                                 // ALL selected
+      for (byte i = 0; i < NUM_LIGHTS; i++) setLight(i, gBrightness[i] + delta);
+    } else {
+      setLight(gSelected - 1, gBrightness[gSelected - 1] + delta);
     }
-  } else {
-    setLight(gSelected - 1, gBrightness[gSelected - 1] + delta);
+  } else {                                                // AUDIO: adjust anim parameter
+    int delta = right ? AUDIO_PARAM_STEP : -AUDIO_PARAM_STEP;   // right = more
+    gAnimParam[gAudioAnim] = constrain(gAnimParam[gAudioAnim] + delta, 0, 255);
+    showAudioParam();
   }
-  gStripDirty = true;
 }
 
-void handleEncoderButton() {
+void handleButton() {
   bool pressed = (digitalRead(RE_BUTTON_PIN) == LOW);
   if (pressed && !gButtonLast && (millis() - gButtonLastTime > BUTTON_DEBOUNCE_MS)) {
-    gSelected = (gSelected + 1) % (NUM_LIGHTS + 1);   // 0..3 lights, 4 = ALL
     gButtonLastTime = millis();
-    gStripDirty = true;
+    if (gMode == MODE_MIDI_MANUAL) {
+      gSelected = (gSelected + 1) % (NUM_LIGHTS + 1);     // ALL, 1, 2, 3, 4
+      gStripDirty = true;
+    } else {
+      gAudioAnim = (gAudioAnim + 1) % NUM_AUDIO_ANIMS;    // next animation
+      resetAudioEnvelope();
+      gShowingParam = false;
+      gAudioStripDirty = true;
+    }
   }
   gButtonLast = pressed;
 }
@@ -269,7 +302,7 @@ void fillStrip(uint32_t color, byte litCount) {
   ledStrip.show();
 }
 
-// Color used to indicate which light is selected in manual mode.
+// Color used to indicate which light is selected in MIDI+MANUAL mode.
 // Selection index: 0 = ALL, 1..4 = light 1..4.
 uint32_t selectionColor(byte sel) {
   switch (sel) {
@@ -281,7 +314,7 @@ uint32_t selectionColor(byte sel) {
   }
 }
 
-// Manual mode: color = selected light, lit pixels = its brightness.
+// MIDI+MANUAL: color = selected light, lit pixels = its brightness.
 void drawManualStrip() {
   byte b;
   if (gSelected == 0) {                   // ALL selected
@@ -304,7 +337,7 @@ uint32_t colorWheel(byte pos) {
 }
 
 // ----------------------------------------------------------------------------------
-// MIDI NOTE / CC HANDLERS (MIDI MODE)
+// MIDI NOTE / CC HANDLERS (MIDI+MANUAL mode)
 // ----------------------------------------------------------------------------------
 void handleNoteOn(byte channel, byte pitch, byte velocity) {
   if (velocity == 0) {            // running-status note-off
@@ -339,23 +372,15 @@ void handleControlChange(byte channel, byte number, byte value) {
     setAllLights(map(value, 0, 127, 0, 255));
   } else if (number == CC_CLOCK_ANIM) {
     gClockAnim = (value >= 64);
-  } else if (number == CC_AUDIO_REACT) {
-    gAudioReactive = (value >= 64);
-    if (gAudioReactive) {
-      gAudioLevel = 0;
-      gAudioMin = 1023;
-      gAudioMax = 0;
-      gAudioWindowStart = millis();
-    }
   }
 }
 
 // ----------------------------------------------------------------------------------
-// MIDI CLOCK HANDLERS (MIDI MODE)
+// MIDI CLOCK HANDLERS (MIDI+MANUAL mode)
 // 24 clock pulses per quarter note. We act once per beat.
 // ----------------------------------------------------------------------------------
 void handleClock() {
-  if (!gMidiMode) return;
+  if (gMode != MODE_MIDI_MANUAL) return;
   if (++gClockCount >= PPQN) {
     gClockCount = 0;
     onBeat();
@@ -369,45 +394,43 @@ void handleStart() {
 
 void handleStop() {
   gClockCount = 0;
-  if (gMidiMode) clearStrip();
 }
 
 void onBeat() {
-  // While audio-reactive is on, audio owns the strip and the lights; skip the clock.
-  if (gAudioReactive) return;
-
-  // Strip: flash a new color each beat as a tempo indicator.
-  fillStrip(colorWheel(gBeatColorIdx), NUM_PIXELS);
-  gBeatFlashActive = true;
-  gBeatFlashStart = millis();
-  gBeatColorIdx += 32;
-
-  // Optional: also drive the lights from the clock (simple on/off pulse per beat).
-  // Add more patterns here as the project grows.
+  // Optional: pulse the bulbs on the beat (simple on/off). Expand with more patterns.
   if (gClockAnim) {
     gClockOn = !gClockOn;
     setAllLights(gClockOn ? 255 : 0);
   }
 }
 
-// Turn the beat flash off after a short time (called every MIDI-mode loop).
-void updateBeatFlash() {
-  if (gBeatFlashActive && (millis() - gBeatFlashStart > BEAT_FLASH_MS)) {
-    clearStrip();
-    gBeatFlashActive = false;
-  }
+// ----------------------------------------------------------------------------------
+// AUDIO MODE
+// ----------------------------------------------------------------------------------
+void resetAudioEnvelope() {
+  gAudioLevel = 0;
+  gAudioMin = 1023;
+  gAudioMax = 0;
+  gAudioWindowStart = millis();
+  gLpfState = 512;
 }
 
-// ----------------------------------------------------------------------------------
-// AUDIO-REACTIVE (MIDI MODE, while CC_AUDIO_REACT is on)
-// ----------------------------------------------------------------------------------
-// Non-blocking envelope follower: sample one ADC reading per loop and track the
-// peak-to-peak swing. Once per window, map that loudness to brightness with a fast
-// attack / slow release (VU-meter feel) and mirror it as a bar on the strip.
-void updateAudioBrightness() {
-  int s = analogRead(AUDIO_PIN);
-  if (s > gAudioMax) gAudioMax = s;
-  if (s < gAudioMin) gAudioMin = s;
+// Non-blocking envelope follower. Samples once per loop and, once per window, maps the
+// peak-to-peak loudness to brightness with a fast attack / slow release. The active
+// animation chooses how the signal is conditioned and what the encoder parameter does.
+void updateAudio() {
+  int sample = analogRead(AUDIO_PIN);
+
+  int value = sample;
+  if (gAudioAnim == ANIM_AMP_LPF) {
+    // One-pole low-pass; alpha (4..256)/256 set by the encoder. Higher param = higher
+    // cutoff (more of the spectrum); lower param = bass only.
+    int alpha = map(gAnimParam[ANIM_AMP_LPF], 0, 255, 4, 256);
+    gLpfState += (int)(((long)(sample - gLpfState) * alpha) >> 8);
+    value = gLpfState;
+  }
+  if (value > gAudioMax) gAudioMax = value;
+  if (value < gAudioMin) gAudioMin = value;
 
   if (millis() - gAudioWindowStart < AUDIO_WINDOW_MS) {
     return;
@@ -417,9 +440,16 @@ void updateAudioBrightness() {
   gAudioMax = 0;
   gAudioWindowStart = millis();
 
+  // Full-scale loudness: for the amplitude animation the encoder sets sensitivity
+  // (higher param -> smaller pp reaches full); the LPF animation uses a fixed scale.
+  int ppFull = (gAudioAnim == ANIM_AMP_BRIGHT)
+                 ? map(gAnimParam[ANIM_AMP_BRIGHT], 0, 255, AUDIO_PP_FULL_MAX, AUDIO_PP_FULL_MIN)
+                 : AUDIO_PP_FULL_LPF;
+  if (ppFull <= AUDIO_PP_MIN) ppFull = AUDIO_PP_MIN + 1;
+
   byte target = 0;
   if (pp > AUDIO_PP_MIN) {
-    target = (byte)constrain(map(pp, AUDIO_PP_MIN, AUDIO_PP_MAX, 0, 255), 0, 255);
+    target = (byte)constrain(map(pp, AUDIO_PP_MIN, ppFull, 0, 255), 0, 255);
   }
   if (target >= gAudioLevel) {
     gAudioLevel = target;                                   // fast attack
@@ -428,5 +458,35 @@ void updateAudioBrightness() {
   }
 
   setAllLights(gAudioLevel);
-  fillStrip(colorWheel(gAudioLevel), map(gAudioLevel, 0, 255, 0, NUM_PIXELS));
+}
+
+// A distinct hue per animation, so the number is also color-coded.
+uint32_t audioAnimColor(byte anim) {
+  return colorWheel((byte)(anim * 60 + 10));
+}
+
+void showAudioParam() {
+  gShowingParam = true;
+  gAudioParamUntil = millis() + AUDIO_PARAM_SHOW_MS;
+  gAudioStripDirty = true;
+}
+
+// Strip shows the animation number (anim+1 pixels). On an encoder turn it shows the
+// parameter level as a bar for AUDIO_PARAM_SHOW_MS, then reverts to the number.
+void updateAudioStrip() {
+  if (gShowingParam && millis() >= gAudioParamUntil) {
+    gShowingParam = false;
+    gAudioStripDirty = true;
+  }
+  if (!gAudioStripDirty) {
+    return;
+  }
+  gAudioStripDirty = false;
+
+  if (gShowingParam) {
+    byte lit = map(gAnimParam[gAudioAnim], 0, 255, 0, NUM_PIXELS);
+    fillStrip(ledStrip.Color(0, 80, 255), lit);            // parameter level = blue bar
+  } else {
+    fillStrip(audioAnimColor(gAudioAnim), gAudioAnim + 1); // animation number
+  }
 }
