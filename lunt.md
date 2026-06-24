@@ -72,6 +72,10 @@ the subdivision — **1 bar · 1/2 · 1/4 · 1/8 · 1/16** (shown as 1–5 red p
 clock, the encoder sets a free speed of **40–250 BPM** (shown as a 1–8 red bar). MIDI
 notes/CC are ignored in ANIMATION mode.
 
+**Clock indicator:** whenever a MIDI clock is being received, the **far-right pixel**
+glows **purple** (dim between beats, bright flash on each beat) — in both modes. If it
+stays dark while you send clock, the Arduino isn't receiving it (see Troubleshooting).
+
 ## Hardware
 
 ### What you need
@@ -181,6 +185,7 @@ working range, not the data-type limit.
 | `ANIM_BPM_MAX` | 250 | 120–600 | Free-run speed (BPM) at encoder fully right. The knob is linear in BPM. |
 | `TAIL_SHIFT` | 2 | 1–4 | Comet/larson/twinkle tail fade: `b -= b >> this` (smaller = longer tail). |
 | `CLOCK_TIMEOUT_MS` | 600 | 300–2000 | Clock is treated as absent (→ free speed) after this gap. |
+| `CLOCK_BLINK_MS` | 90 | 30–250 | How long the purple clock indicator stays bright on each beat. |
 
 Beat-lock subdivisions are fixed in `SUBDIV_BEATS` (1 bar, 1/2, 1/4, 1/8, 1/16).
 
@@ -219,5 +224,19 @@ bounce. If it still twitches, add a **100 nF capacitor from each encoder pin (CL
 to GND** for hardware debouncing.
 
 ### Encoder direction or strip fill is backwards
-Swap the two `ENCODER_STEP` signs in `handleEncoder()` to reverse the knob direction;
-the brightness bar fill direction is set in `fillStrip()`.
+Flip the `right` test in `handleEncoder()` to reverse the knob direction; the strip's
+left/right mapping is in `fillPixels()` / `lightOnePixel()`.
+
+### MIDI clock isn't detected (animations don't beat-lock)
+First check the **clock indicator** — the far-right pixel turns purple when a clock is
+arriving. If it stays dark:
+- **Enable clock output** on the source. Most DAWs/keyboards don't send MIDI clock by
+  default — turn on "send MIDI clock / sync" for the correct port.
+- **Press play.** Many sources only send clock while the transport is running; just
+  changing the tempo number sends nothing.
+- Confirm the MIDI input circuit is wired to **RX (D0)** and working (notes work in
+  MANUAL mode is a good check).
+
+If the indicator *is* purple but tempo seems to do nothing: make sure you've **entered**
+an animation (pressed the encoder), since the clock only drives a running animation, and
+that you're watching a tempo-sensitive one (e.g. comet or strobe).

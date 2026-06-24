@@ -55,6 +55,7 @@ const unsigned long MANUAL_BRIGHT_SHOW_MS = 1200;  // brightness bar shown after
 // MIDI clock.
 const byte PPQN = 24;                            // clock pulses per quarter note
 const unsigned long CLOCK_TIMEOUT_MS = 600;      // clock considered absent after this
+const unsigned long CLOCK_BLINK_MS = 90;         // how long the beat flash stays lit
 
 // Beat-lock subdivisions, in beats per unit (index 0 = slow .. 4 = fast).
 // 1 bar, 1/2, 1/4, 1/8, 1/16.
@@ -92,8 +93,11 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 // -------------------------------- NEOPIXEL SETUP ----------------------------------
 const byte NUM_PIXELS = 8;
 Adafruit_NeoPixel ledStrip = Adafruit_NeoPixel(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
-uint32_t COLOR_WARM;   // MANUAL mode color  (set in setup once ledStrip exists)
-uint32_t COLOR_RED;    // ANIMATION mode color
+uint32_t COLOR_WARM;       // MANUAL mode color  (set in setup once ledStrip exists)
+uint32_t COLOR_RED;        // ANIMATION mode color
+uint32_t COLOR_CLOCK_ON;   // clock-beat flash (far-right pixel)
+uint32_t COLOR_CLOCK_DIM;  // clock present, between beats
+const byte CLOCK_PIXEL = NUM_PIXELS - 1;   // logical pixel used as the clock indicator
 
 // ---------------------------------- ANIMATIONS ------------------------------------
 enum Anim {
@@ -162,7 +166,9 @@ byte gClockCount = 0;
 unsigned long gBeatMs = 500;       // measured beat interval (default 120 BPM)
 unsigned long gLastBeatAt = 0;
 unsigned long gLastClockMs = 0;
+unsigned long gBeatPulseAt = 0;    // time of the last beat (drives the indicator flash)
 bool gPrevClockActive = false;
+bool gClockBlinkOn = false;
 
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
@@ -193,6 +199,8 @@ void setup() {
   ledStrip.setBrightness(gStripBrightness);
   COLOR_WARM = ledStrip.Color(255, 130, 15);
   COLOR_RED  = ledStrip.Color(255, 0, 0);
+  COLOR_CLOCK_ON  = ledStrip.Color(160, 0, 255);   // purple
+  COLOR_CLOCK_DIM = ledStrip.Color(25, 0, 40);      // dim purple
   clearStrip();
 
   DimmableLight::setSyncPin(DIM_SYNC_PIN);
@@ -222,12 +230,14 @@ void loop() {
     gStripDirty = true;
   }
 
-  // ANIMATION: refresh the parameter readout when the clock appears/disappears.
+  // Clock indicator: redraw when the clock appears/disappears or the beat flash toggles.
   bool ca = clockActive();
-  if (gMode == MODE_ANIM && gAnimRunning && ca != gPrevClockActive) {
+  bool blink = ca && (millis() - gBeatPulseAt < CLOCK_BLINK_MS);
+  if (ca != gPrevClockActive || blink != gClockBlinkOn) {
     gStripDirty = true;
   }
   gPrevClockActive = ca;
+  gClockBlinkOn = blink;
 
   if (gMode == MODE_ANIM && gAnimRunning) {
     updateAnim();
@@ -350,6 +360,7 @@ void handleClock() {
       if (d > 50 && d < 3000) gBeatMs = d;       // ~20-1200 BPM
     }
     gLastBeatAt = now;
+    gBeatPulseAt = now;                          // flash the clock indicator on the beat
   }
 }
 
@@ -493,17 +504,16 @@ void clearStrip() {
 }
 
 // Logical pixel 0 is the far-left LED. The strip's data-in end is physically on the
-// right, so map logical -> physical in reverse here.
+// right, so map logical -> physical in reverse here. These only fill the buffer;
+// drawStrip() applies the clock overlay and calls show() once.
 void fillPixels(uint32_t color, byte litCount) {
   for (byte i = 0; i < NUM_PIXELS; i++)
     ledStrip.setPixelColor(i, i >= (NUM_PIXELS - litCount) ? color : 0);
-  ledStrip.show();
 }
 
 void lightOnePixel(byte index, uint32_t color) {
   byte phys = NUM_PIXELS - 1 - index;
   for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, i == phys ? color : 0);
-  ledStrip.show();
 }
 
 void drawStrip() {
@@ -534,4 +544,12 @@ void drawStrip() {
       fillPixels(COLOR_RED, map(gAnimSpeed[gAnimSel], 0, 255, 1, NUM_PIXELS));  // speed
     }
   }
+
+  // Clock indicator overlay (far-right pixel): dim green when a clock is present,
+  // bright green flash on each beat. Off entirely when no clock is being received.
+  if (clockActive()) {
+    byte phys = NUM_PIXELS - 1 - CLOCK_PIXEL;
+    ledStrip.setPixelColor(phys, gClockBlinkOn ? COLOR_CLOCK_ON : COLOR_CLOCK_DIM);
+  }
+  ledStrip.show();
 }
