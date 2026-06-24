@@ -6,8 +6,9 @@
 // The SWITCH chooses one of two modes:
 //
 //   * MANUAL (strip = warm yellow)
-//       - Encoder press : cycle the target ALL -> 1 -> 2 -> 3 -> 4.
-//       - Encoder turn  : set that target's brightness (MIDI notes/CC also set it).
+//       - Encoder press : cycle the target ALL -> 1 -> 2 -> 3 -> 4 -> STRIP.
+//       - Encoder turn  : set that target's brightness (MIDI notes/CC also set bulbs).
+//         The STRIP target sets the NeoPixel indicator brightness (applies to all modes).
 //       - Strip: ALL = all pixels, Light N = the Nth pixel. Turning briefly shows a
 //         brightness bar, then reverts to the pixel-number display.
 //
@@ -31,6 +32,8 @@
 const int  ENCODER_STEP   = 8;     // brightness / free-speed change per encoder detent
 const unsigned long BUTTON_DEBOUNCE_MS = 200;
 const byte MANUAL_RESET_BRIGHTNESS = 128;   // all bulbs reset to this on entering MANUAL
+const byte STRIP_BRIGHTNESS_DEFAULT = 60;   // NeoPixel indicator brightness at boot, 0-255
+const byte STRIP_BRIGHTNESS_MIN = 5;        // floor so the indicator never goes fully dark
 
 // MIDI note -> light mapping (MANUAL mode). Note ON sets brightness from velocity,
 // Note OFF turns the light fully off.
@@ -104,10 +107,13 @@ Mode gMode = MODE_MANUAL;
 
 bool gStripDirty = true;
 
-// MANUAL: target 0 = ALL, 1..4 = single light.
+// MANUAL: target 0 = ALL, 1..4 = single light, then STRIP_TARGET = NeoPixel brightness.
+const byte STRIP_TARGET = NUM_LIGHTS + 1;   // = 5
+const byte NUM_MANUAL_TARGETS = NUM_LIGHTS + 2;
 byte gSelected = 0;
 bool gManualBrightActive = false;
 unsigned long gManualBrightUntil = 0;
+byte gStripBrightness = STRIP_BRIGHTNESS_DEFAULT;   // NeoPixel brightness, applies to all modes
 
 // Encoder button.
 bool gButtonLast = false;
@@ -184,7 +190,7 @@ void setup() {
   }
 
   ledStrip.begin();
-  ledStrip.setBrightness(60);
+  ledStrip.setBrightness(gStripBrightness);
   COLOR_WARM = ledStrip.Color(255, 130, 15);
   COLOR_RED  = ledStrip.Color(255, 0, 0);
   clearStrip();
@@ -280,14 +286,20 @@ void handleEncoder() {
 
   if (gMode == MODE_MANUAL) {
     int delta = right ? ENCODER_STEP : -ENCODER_STEP;
-    if (gSelected == 0) {
-      for (byte i = 0; i < NUM_LIGHTS; i++) setLight(i, gBrightness[i] + delta);
+    if (gSelected == STRIP_TARGET) {            // set the NeoPixel indicator brightness
+      gStripBrightness = constrain(gStripBrightness + delta, STRIP_BRIGHTNESS_MIN, 255);
+      ledStrip.setBrightness(gStripBrightness);
+      gStripDirty = true;
     } else {
-      setLight(gSelected - 1, gBrightness[gSelected - 1] + delta);
+      if (gSelected == 0) {
+        for (byte i = 0; i < NUM_LIGHTS; i++) setLight(i, gBrightness[i] + delta);
+      } else {
+        setLight(gSelected - 1, gBrightness[gSelected - 1] + delta);
+      }
+      gManualBrightActive = true;               // show the brightness bar
+      gManualBrightUntil = millis() + MANUAL_BRIGHT_SHOW_MS;
+      gStripDirty = true;
     }
-    gManualBrightActive = true;                 // show the brightness bar
-    gManualBrightUntil = millis() + MANUAL_BRIGHT_SHOW_MS;
-    gStripDirty = true;
   } else if (!gAnimRunning) {                   // ANIMATION menu: move the cursor
     gAnimSel = (gAnimSel + (right ? 1 : NUM_ANIMS - 1)) % NUM_ANIMS;
     gStripDirty = true;
@@ -305,7 +317,7 @@ void handleButton() {
   if (pressed && !gButtonLast && (millis() - gButtonLastTime > BUTTON_DEBOUNCE_MS)) {
     gButtonLastTime = millis();
     if (gMode == MODE_MANUAL) {
-      gSelected = (gSelected + 1) % (NUM_LIGHTS + 1);
+      gSelected = (gSelected + 1) % NUM_MANUAL_TARGETS;   // ALL, 1-4, STRIP
       gManualBrightActive = false;
       gStripDirty = true;
     } else if (!gAnimRunning) {
@@ -496,7 +508,9 @@ void lightOnePixel(byte index, uint32_t color) {
 
 void drawStrip() {
   if (gMode == MODE_MANUAL) {
-    if (gManualBrightActive) {                      // brightness bar (warm yellow)
+    if (gSelected == STRIP_TARGET) {                 // strip brightness: bar (also dims live)
+      fillPixels(COLOR_WARM, map(gStripBrightness, 0, 255, 1, NUM_PIXELS));
+    } else if (gManualBrightActive) {                // bulb brightness bar (warm yellow)
       byte b;
       if (gSelected == 0) {
         int sum = 0;

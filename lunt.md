@@ -25,7 +25,11 @@ The toggle switch picks the mode:
 | Control | Action |
 | --- | --- |
 | Turn encoder right / left | Brighter / dimmer (the selected target) |
-| Press encoder | Cycle the target: **ALL → 1 → 2 → 3 → 4** (defaults to ALL) |
+| Press encoder | Cycle the target: **ALL → 1 → 2 → 3 → 4 → STRIP** (defaults to ALL) |
+
+The last target, **STRIP**, sets the NeoPixel indicator's overall brightness (it shows a
+warm-yellow bar that also dims/brightens live). That brightness **persists into ANIMATION
+mode** too. Floor is `STRIP_BRIGHTNESS_MIN` so the indicator never goes fully dark.
 
 MIDI also drives brightness here (channel **15** by default, `MIDI_CHANNEL` in the sketch):
 
@@ -164,7 +168,8 @@ working range, not the data-type limit.
 | Variable | Value | Range | Description |
 | --- | --- | --- | --- |
 | `NUM_PIXELS` | 8 | 1–~60 | Number of LEDs on the strip; set to match yours. |
-| `ledStrip.setBrightness()` | 60 | 0–255 | Overall strip brightness cap (set inline in `setup()`). |
+| `STRIP_BRIGHTNESS_DEFAULT` | 60 | 0–255 | Indicator brightness at boot (live-adjustable via the MANUAL **STRIP** target). |
+| `STRIP_BRIGHTNESS_MIN` | 5 | 0–60 | Floor for the STRIP brightness control so the indicator stays visible. |
 | `COLOR_WARM` | (255,130,15) | any RGB | MANUAL-mode strip color (set in `setup()`). |
 | `COLOR_RED` | (255,0,0) | any RGB | ANIMATION-mode strip color (set in `setup()`). |
 | `MANUAL_BRIGHT_SHOW_MS` | 1200 | 500–3000 | How long the brightness bar shows after a turn before reverting. |
