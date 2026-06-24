@@ -3,46 +3,67 @@
 // ----------------------------------------------------------------------------------
 // Arduino Nano + RobotDyn 4-channel AC dimmer + rotary encoder + 8px NeoPixel strip.
 //
-// MODE is chosen by the SWITCH:
-//   * MIDI mode   -> listen to MIDI: notes turn lights ON/OFF, CC sets brightness,
-//                    MIDI clock drives animations. Strip blinks in time with clock.
-//   * MANUAL mode -> rotary encoder sets brightness of the selected light.
-//                    Press the encoder to cycle: Light1 -> 2 -> 3 -> 4 -> ALL.
-//                    Strip shows the selected light (color) + its brightness (bar).
+// The SWITCH chooses one of two modes:
+//
+//   * MANUAL (strip = warm yellow)
+//       - Encoder press : cycle the target ALL -> 1 -> 2 -> 3 -> 4.
+//       - Encoder turn  : set that target's brightness (MIDI notes/CC also set it).
+//       - Strip: ALL = all pixels, Light N = the Nth pixel. Turning briefly shows a
+//         brightness bar, then reverts to the pixel-number display.
+//
+//   * ANIMATION (strip = red)
+//       - Selection menu: turn to move the cursor over the 8 animations (one pixel each),
+//         press to enter, press again to exit back to the menu.
+//       - In an animation: encoder sets its parameter (shown on the strip). MIDI notes/CC
+//         are ignored. If a MIDI clock is present the animation beat-locks and the encoder
+//         picks the subdivision (1 bar / 1/2 / 1/4 / 1/8 / 1/16).
+//       - Animations: comet, larson, sine sweep, breathe, twinkle, build, alternate, strobe.
 // ----------------------------------------------------------------------------------
 #include <MIDI.h>
 #include <Adafruit_NeoPixel.h>
 #include "dimmable_light.h"
 
 // ================================ CONFIG / KNOBS ==================================
-// Which switch level means "MIDI mode". Switch is INPUT_PULLUP, so it idles HIGH and
-// reads LOW when closed to GND. If your two modes feel reversed, flip HIGH <-> LOW.
-#define MIDI_MODE_LEVEL   HIGH
+// Switch level that selects ANIMATION mode. The switch is INPUT_PULLUP, so it idles
+// HIGH (= MANUAL) and reads LOW when closed to GND (= ANIMATION). Flip if reversed.
+#define ANIM_MODE_LEVEL    LOW
 
-// Encoder feel: brightness change (0-255) applied per detent (one click of the knob).
-const int  ENCODER_STEP     = 8;
+const int  ENCODER_STEP   = 8;     // brightness / free-speed change per encoder detent
+const unsigned long BUTTON_DEBOUNCE_MS = 200;
 
-// MIDI note -> light mapping (one note per light). Note ON sets brightness from
-// velocity, Note OFF turns the light fully off.
-const byte NOTE_LIGHT[4]    = {60, 61, 62, 63};   // C4, C#4, D4, D#4
-const byte NOTE_MIN_BRIGHT  = 40;                 // softest visible "on" level
+// MIDI note -> light mapping (MANUAL mode). Note ON sets brightness from velocity,
+// Note OFF turns the light fully off.
+const byte NOTE_LIGHT[4]   = {60, 61, 62, 63};   // C4, C#4, D4, D#4
+const byte NOTE_MIN_BRIGHT = 40;                 // softest visible "on" level
+// MIDI CC -> light brightness mapping (MANUAL mode).
+const byte CC_LIGHT[4]     = {22, 23, 24, 25};
+const byte CC_ALL_BRIGHT   = 27;                 // brightness of all lights at once
 
-// MIDI CC -> light brightness mapping, plus a couple of control CCs.
-const byte CC_LIGHT[4]      = {22, 23, 24, 25};
-const byte CC_ALL_BRIGHT    = 27;                 // brightness of all lights at once
-const byte CC_CLOCK_ANIM    = 26;                 // >=64 enables clock light animation
+// Animation timing. Free-run unit (encoder speed) ranges between these; one "unit" is
+// one step (stepwise anims) or one cycle (continuous anims).
+const unsigned long UNIT_MS_MIN = 80;            // fastest (encoder fully right)
+const unsigned long UNIT_MS_MAX = 2000;          // slowest (encoder fully left)
+const byte TAIL_SHIFT = 2;                       // comet/larson/twinkle fade: b -= b >> this
 
-// Set true to let the MIDI clock drive the LIGHTS by default (otherwise the clock
-// only animates the NeoPixel strip and notes/CC keep direct control of the lights).
-bool gClockAnim = false;
+// Strip feedback timing.
+const unsigned long MANUAL_BRIGHT_SHOW_MS = 1200;  // brightness bar shown after a turn
+
+// MIDI clock.
+const byte PPQN = 24;                            // clock pulses per quarter note
+const unsigned long CLOCK_TIMEOUT_MS = 600;      // clock considered absent after this
+
+// Beat-lock subdivisions, in beats per unit (index 0 = slow .. 4 = fast).
+// 1 bar, 1/2, 1/4, 1/8, 1/16.
+const byte NUM_SUBDIV = 5;
+const float SUBDIV_BEATS[NUM_SUBDIV] = {4.0, 2.0, 1.0, 0.5, 0.25};
 
 // -------------------------------- CONTROLLER IO -----------------------------------
 const byte SWITCH_PIN     = A0;   // mode switch  (D14)
 const byte LED_PIN        = A1;   // NeoPixel data (D15)
+const byte SEED_PIN       = A2;   // floating analog pin used to seed random()
 const byte RE_CLK_PIN     = 3;    // encoder A / CLK (INT1)
 const byte RE_DT_PIN      = 8;    // encoder B / DT
 const byte RE_BUTTON_PIN  = 12;   // encoder push button
-const unsigned long BUTTON_DEBOUNCE_MS = 200;
 
 // -------------------------------- DIMMER SETUP ------------------------------------
 const byte DIM_SYNC_PIN   = 2;    // zero-cross sync (INT0) - required by the library
@@ -58,7 +79,7 @@ DimmableLight dimLight4(DIM4_PIN);
 DimmableLight* gLights[4] = {&dimLight1, &dimLight2, &dimLight3, &dimLight4};
 
 const byte NUM_LIGHTS = 4;
-byte gBrightness[NUM_LIGHTS] = {0, 0, 0, 0};   // last brightness sent to each light
+byte gBrightness[NUM_LIGHTS] = {0, 0, 0, 0};
 
 // ---------------------------------- MIDI SETUP ------------------------------------
 MIDI_CREATE_DEFAULT_INSTANCE();
@@ -67,20 +88,31 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 // -------------------------------- NEOPIXEL SETUP ----------------------------------
 const byte NUM_PIXELS = 8;
 Adafruit_NeoPixel ledStrip = Adafruit_NeoPixel(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+uint32_t COLOR_WARM;   // MANUAL mode color  (set in setup once ledStrip exists)
+uint32_t COLOR_RED;    // ANIMATION mode color
+
+// ---------------------------------- ANIMATIONS ------------------------------------
+enum Anim {
+  ANIM_COMET, ANIM_LARSON, ANIM_SINE, ANIM_BREATHE,
+  ANIM_TWINKLE, ANIM_BUILD, ANIM_ALT, ANIM_STROBE, NUM_ANIMS
+};
 
 // -------------------------------- STATE / RUNTIME ---------------------------------
-bool gMidiMode = false;            // current mode (set in setup)
-bool gStripDirty = true;           // manual-mode strip needs redraw
+enum Mode { MODE_MANUAL, MODE_ANIM };
+Mode gMode = MODE_MANUAL;
 
-// Manual-mode selection: 0 = ALL lights (the default), 1..4 = single light.
-// Pressing the encoder cycles ALL -> 1 -> 2 -> 3 -> 4 -> ALL.
+bool gStripDirty = true;
+
+// MANUAL: target 0 = ALL, 1..4 = single light.
 byte gSelected = 0;
+bool gManualBrightActive = false;
+unsigned long gManualBrightUntil = 0;
+
+// Encoder button.
 bool gButtonLast = false;
 unsigned long gButtonLastTime = 0;
 
-// Rotary encoder: polled quadrature state-table decoder (Ben Buxton style). It only
-// emits a step on a complete, valid detent transition, so contact bounce and noise
-// are rejected instead of being counted as random jumps.
+// Rotary encoder: polled quadrature state-table decoder (Ben Buxton style).
 #define R_START     0x0
 #define R_CW_FINAL  0x1
 #define R_CW_BEGIN  0x2
@@ -102,14 +134,28 @@ const unsigned char ENCODER_TABLE[7][4] = {
 };
 unsigned char gEncoderState = R_START;
 
-// MIDI clock / beat tracking.
-const byte PPQN = 24;              // MIDI clock pulses per quarter note
+// ANIMATION mode.
+byte gAnimSel = 0;                 // 0..NUM_ANIMS-1, highlighted/active animation
+bool gAnimRunning = false;         // false = selection menu, true = running
+int  gAnimSpeed[NUM_ANIMS];        // free-run speed per animation, 0..255
+byte gAnimSubdiv[NUM_ANIMS];       // beat-lock subdivision per animation, 0..NUM_SUBDIV-1
+
+// Animation render state.
+unsigned long gStepAt = 0;         // last step time (stepwise anims)
+unsigned long gLastRender = 0;     // last render time (continuous anims)
+float gPhase = 0;                  // sine / breathe phase
+int  gAnimPos = 0;                 // comet / larson position
+int  gAnimDir = 1;                 // larson direction
+byte gBuildStep = 0;
+bool gAltState = false;
+bool gStrobeOn = false;
+
+// MIDI clock tracking.
 byte gClockCount = 0;
-bool gClockOn = false;             // clock light-animation toggle state
-byte gBeatColorIdx = 0;            // color cycled per beat on the strip
-bool gBeatFlashActive = false;
-unsigned long gBeatFlashStart = 0;
-const unsigned long BEAT_FLASH_MS = 70;
+unsigned long gBeatMs = 500;       // measured beat interval (default 120 BPM)
+unsigned long gLastBeatAt = 0;
+unsigned long gLastClockMs = 0;
+bool gPrevClockActive = false;
 
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
@@ -121,23 +167,31 @@ void setup() {
   MIDI.setHandleControlChange(handleControlChange);
   MIDI.setHandleClock(handleClock);
   MIDI.setHandleStart(handleStart);
-  MIDI.setHandleContinue(handleStart);   // resume == restart our beat counter
+  MIDI.setHandleContinue(handleStart);
   MIDI.setHandleStop(handleStop);
 
   pinMode(RE_CLK_PIN, INPUT_PULLUP);
   pinMode(RE_DT_PIN, INPUT_PULLUP);
   pinMode(RE_BUTTON_PIN, INPUT_PULLUP);
-
   pinMode(SWITCH_PIN, INPUT_PULLUP);
 
+  randomSeed(analogRead(SEED_PIN));
+
+  for (byte i = 0; i < NUM_ANIMS; i++) {
+    gAnimSpeed[i] = 128;
+    gAnimSubdiv[i] = 2;            // default 1/4 note (one step/cycle per beat)
+  }
+
   ledStrip.begin();
-  ledStrip.setBrightness(60);   // overall strip cap, 0-255
+  ledStrip.setBrightness(60);
+  COLOR_WARM = ledStrip.Color(255, 130, 15);
+  COLOR_RED  = ledStrip.Color(255, 0, 0);
   clearStrip();
 
   DimmableLight::setSyncPin(DIM_SYNC_PIN);
   DimmableLight::begin();
 
-  gMidiMode = (digitalRead(SWITCH_PIN) == MIDI_MODE_LEVEL);
+  gMode = readModeSwitch();
   onModeChange();
 }
 
@@ -145,36 +199,52 @@ void setup() {
 // >x< LOOP >x<
 // ----------------------------------------------------------------------------------
 void loop() {
-  bool midiMode = (digitalRead(SWITCH_PIN) == MIDI_MODE_LEVEL);
-  if (midiMode != gMidiMode) {
-    gMidiMode = midiMode;
+  Mode mode = readModeSwitch();
+  if (mode != gMode) {
+    gMode = mode;
     onModeChange();
   }
 
-  if (gMidiMode) {
-    MIDI.read();          // fires the note/CC/clock handlers above
-    updateBeatFlash();    // clears the strip flash after BEAT_FLASH_MS
-  } else {
-    handleEncoder();
-    handleEncoderButton();
-    if (gStripDirty) {
-      drawManualStrip();
-      gStripDirty = false;
-    }
+  MIDI.read();           // clock always; notes/CC act only in MANUAL (gated in handlers)
+  handleEncoder();
+  handleButton();
+
+  // MANUAL: revert the brightness bar to the pixel-number display after a timeout.
+  if (gMode == MODE_MANUAL && gManualBrightActive && millis() >= gManualBrightUntil) {
+    gManualBrightActive = false;
+    gStripDirty = true;
+  }
+
+  // ANIMATION: refresh the parameter readout when the clock appears/disappears.
+  bool ca = clockActive();
+  if (gMode == MODE_ANIM && gAnimRunning && ca != gPrevClockActive) {
+    gStripDirty = true;
+  }
+  gPrevClockActive = ca;
+
+  if (gMode == MODE_ANIM && gAnimRunning) {
+    updateAnim();
+  }
+
+  if (gStripDirty) {
+    drawStrip();
+    gStripDirty = false;
   }
 }
 
-// Called once whenever the switch flips between modes.
+Mode readModeSwitch() {
+  return (digitalRead(SWITCH_PIN) == ANIM_MODE_LEVEL) ? MODE_ANIM : MODE_MANUAL;
+}
+
 void onModeChange() {
-  if (gMidiMode) {
-    gClockCount = 0;
-    gBeatFlashActive = false;
-    clearStrip();
+  gEncoderState = R_START;
+  if (gMode == MODE_MANUAL) {
+    gSelected = 0;
+    gManualBrightActive = false;
   } else {
-    gSelected = 0;             // entering manual mode defaults to ALL lights
-    gEncoderState = R_START;   // start the decoder fresh
-    gStripDirty = true;        // redraw selection + brightness bar
+    gAnimRunning = false;          // start in the selection menu
   }
+  gStripDirty = true;
 }
 
 // ----------------------------------------------------------------------------------
@@ -187,16 +257,12 @@ void setLight(byte index, int value) {
 }
 
 void setAllLights(int value) {
-  for (byte i = 0; i < NUM_LIGHTS; i++) {
-    setLight(i, value);
-  }
+  for (byte i = 0; i < NUM_LIGHTS; i++) setLight(i, value);
 }
 
 // ----------------------------------------------------------------------------------
-// ROTARY ENCODER (MANUAL MODE)
+// ROTARY ENCODER
 // ----------------------------------------------------------------------------------
-// Poll both encoder pins and feed them through the state table. Returns DIR_CW,
-// DIR_CCW once per detent, or DIR_NONE for intermediate / bounce transitions.
 unsigned char readEncoder() {
   unsigned char pinState = (digitalRead(RE_DT_PIN) << 1) | digitalRead(RE_CLK_PIN);
   gEncoderState = ENCODER_TABLE[gEncoderState & 0x0F][pinState];
@@ -208,160 +274,243 @@ void handleEncoder() {
   if (dir == DIR_NONE) {
     return;
   }
-  // Signs chosen so turning the knob right brightens. If yours is reversed, swap them.
-  int delta = (dir == DIR_CW) ? -ENCODER_STEP : ENCODER_STEP;
-  if (gSelected == 0) {                     // ALL selected
-    for (byte i = 0; i < NUM_LIGHTS; i++) {
-      setLight(i, gBrightness[i] + delta);
+  bool right = (dir == DIR_CCW);   // DIR_CW is a left turn on this wiring
+
+  if (gMode == MODE_MANUAL) {
+    int delta = right ? ENCODER_STEP : -ENCODER_STEP;
+    if (gSelected == 0) {
+      for (byte i = 0; i < NUM_LIGHTS; i++) setLight(i, gBrightness[i] + delta);
+    } else {
+      setLight(gSelected - 1, gBrightness[gSelected - 1] + delta);
     }
-  } else {
-    setLight(gSelected - 1, gBrightness[gSelected - 1] + delta);
+    gManualBrightActive = true;                 // show the brightness bar
+    gManualBrightUntil = millis() + MANUAL_BRIGHT_SHOW_MS;
+    gStripDirty = true;
+  } else if (!gAnimRunning) {                   // ANIMATION menu: move the cursor
+    gAnimSel = (gAnimSel + (right ? 1 : NUM_ANIMS - 1)) % NUM_ANIMS;
+    gStripDirty = true;
+  } else if (clockActive()) {                   // running, clocked: pick subdivision
+    gAnimSubdiv[gAnimSel] = constrain(gAnimSubdiv[gAnimSel] + (right ? 1 : -1), 0, NUM_SUBDIV - 1);
+    gStripDirty = true;
+  } else {                                      // running, free: set speed
+    gAnimSpeed[gAnimSel] = constrain(gAnimSpeed[gAnimSel] + (right ? ENCODER_STEP : -ENCODER_STEP), 0, 255);
+    gStripDirty = true;
   }
-  gStripDirty = true;
 }
 
-void handleEncoderButton() {
+void handleButton() {
   bool pressed = (digitalRead(RE_BUTTON_PIN) == LOW);
   if (pressed && !gButtonLast && (millis() - gButtonLastTime > BUTTON_DEBOUNCE_MS)) {
-    gSelected = (gSelected + 1) % (NUM_LIGHTS + 1);   // 0..3 lights, 4 = ALL
     gButtonLastTime = millis();
-    gStripDirty = true;
+    if (gMode == MODE_MANUAL) {
+      gSelected = (gSelected + 1) % (NUM_LIGHTS + 1);
+      gManualBrightActive = false;
+      gStripDirty = true;
+    } else if (!gAnimRunning) {
+      gAnimRunning = true;                       // enter the selected animation
+      resetAnimState();
+      gStripDirty = true;
+    } else {
+      gAnimRunning = false;                      // exit back to the menu
+      setAllLights(0);
+      gStripDirty = true;
+    }
   }
   gButtonLast = pressed;
 }
 
 // ----------------------------------------------------------------------------------
-// NEOPIXEL HELPERS
+// MIDI CLOCK
 // ----------------------------------------------------------------------------------
-void clearStrip() {
-  for (byte i = 0; i < NUM_PIXELS; i++) {
-    ledStrip.setPixelColor(i, 0);
-  }
-  ledStrip.show();
+bool clockActive() {
+  return gLastClockMs != 0 && (millis() - gLastClockMs < CLOCK_TIMEOUT_MS);
 }
 
-void fillStrip(uint32_t color, byte litCount) {
-  // Fill from the high-index end so the bar grows from the opposite physical side.
-  for (byte i = 0; i < NUM_PIXELS; i++) {
-    ledStrip.setPixelColor(i, i >= (NUM_PIXELS - litCount) ? color : 0);
-  }
-  ledStrip.show();
-}
-
-// Color used to indicate which light is selected in manual mode.
-// Selection index: 0 = ALL, 1..4 = light 1..4.
-uint32_t selectionColor(byte sel) {
-  switch (sel) {
-    case 1:  return ledStrip.Color(255,   0,   0);  // light 1 - red
-    case 2:  return ledStrip.Color(  0, 255,   0);  // light 2 - green
-    case 3:  return ledStrip.Color(  0,   0, 255);  // light 3 - blue
-    case 4:  return ledStrip.Color(255, 150,   0);  // light 4 - amber
-    default: return ledStrip.Color(255, 255, 255);  // ALL      - white
-  }
-}
-
-// Manual mode: color = selected light, lit pixels = its brightness.
-void drawManualStrip() {
-  byte b;
-  if (gSelected == 0) {                   // ALL selected
-    int sum = 0;
-    for (byte i = 0; i < NUM_LIGHTS; i++) sum += gBrightness[i];
-    b = sum / NUM_LIGHTS;
-  } else {
-    b = gBrightness[gSelected - 1];
-  }
-  byte litCount = map(b, 0, 255, 0, NUM_PIXELS);
-  fillStrip(selectionColor(gSelected), litCount);
-}
-
-uint32_t colorWheel(byte pos) {
-  pos = 255 - pos;
-  if (pos < 85)  return ledStrip.Color(255 - pos * 3, 0, pos * 3);
-  if (pos < 170) { pos -= 85;  return ledStrip.Color(0, pos * 3, 255 - pos * 3); }
-  pos -= 170;
-  return ledStrip.Color(pos * 3, 255 - pos * 3, 0);
-}
-
-// ----------------------------------------------------------------------------------
-// MIDI NOTE / CC HANDLERS (MIDI MODE)
-// ----------------------------------------------------------------------------------
-void handleNoteOn(byte channel, byte pitch, byte velocity) {
-  if (velocity == 0) {            // running-status note-off
-    handleNoteOff(channel, pitch, velocity);
-    return;
-  }
-  for (byte i = 0; i < NUM_LIGHTS; i++) {
-    if (pitch == NOTE_LIGHT[i]) {
-      setLight(i, map(velocity, 1, 127, NOTE_MIN_BRIGHT, 255));
-      break;
-    }
-  }
-}
-
-void handleNoteOff(byte channel, byte pitch, byte velocity) {
-  for (byte i = 0; i < NUM_LIGHTS; i++) {
-    if (pitch == NOTE_LIGHT[i]) {
-      setLight(i, 0);             // note off = light fully off
-      break;
-    }
-  }
-}
-
-void handleControlChange(byte channel, byte number, byte value) {
-  for (byte i = 0; i < NUM_LIGHTS; i++) {
-    if (number == CC_LIGHT[i]) {
-      setLight(i, map(value, 0, 127, 0, 255));
-      return;
-    }
-  }
-  if (number == CC_ALL_BRIGHT) {
-    setAllLights(map(value, 0, 127, 0, 255));
-  } else if (number == CC_CLOCK_ANIM) {
-    gClockAnim = (value >= 64);
-  }
-}
-
-// ----------------------------------------------------------------------------------
-// MIDI CLOCK HANDLERS (MIDI MODE)
-// 24 clock pulses per quarter note. We act once per beat.
-// ----------------------------------------------------------------------------------
 void handleClock() {
-  if (!gMidiMode) return;
+  gLastClockMs = millis();
   if (++gClockCount >= PPQN) {
     gClockCount = 0;
-    onBeat();
+    unsigned long now = millis();
+    if (gLastBeatAt != 0) {
+      unsigned long d = now - gLastBeatAt;
+      if (d > 50 && d < 3000) gBeatMs = d;       // ~20-1200 BPM
+    }
+    gLastBeatAt = now;
   }
 }
 
 void handleStart() {
   gClockCount = 0;
-  gClockOn = false;
+  gLastBeatAt = 0;
 }
 
 void handleStop() {
   gClockCount = 0;
-  if (gMidiMode) clearStrip();
 }
 
-void onBeat() {
-  // Strip: flash a new color each beat as a tempo indicator.
-  fillStrip(colorWheel(gBeatColorIdx), NUM_PIXELS);
-  gBeatFlashActive = true;
-  gBeatFlashStart = millis();
-  gBeatColorIdx += 32;
-
-  // Optional: also drive the lights from the clock (simple on/off pulse per beat).
-  // Add more patterns here as the project grows.
-  if (gClockAnim) {
-    gClockOn = !gClockOn;
-    setAllLights(gClockOn ? 255 : 0);
+// ----------------------------------------------------------------------------------
+// MIDI NOTE / CC HANDLERS (MANUAL mode only)
+// ----------------------------------------------------------------------------------
+void handleNoteOn(byte channel, byte pitch, byte velocity) {
+  if (gMode != MODE_MANUAL) return;
+  if (velocity == 0) { handleNoteOff(channel, pitch, velocity); return; }
+  for (byte i = 0; i < NUM_LIGHTS; i++) {
+    if (pitch == NOTE_LIGHT[i]) { setLight(i, map(velocity, 1, 127, NOTE_MIN_BRIGHT, 255)); break; }
   }
 }
 
-// Turn the beat flash off after a short time (called every MIDI-mode loop).
-void updateBeatFlash() {
-  if (gBeatFlashActive && (millis() - gBeatFlashStart > BEAT_FLASH_MS)) {
-    clearStrip();
-    gBeatFlashActive = false;
+void handleNoteOff(byte channel, byte pitch, byte velocity) {
+  if (gMode != MODE_MANUAL) return;
+  for (byte i = 0; i < NUM_LIGHTS; i++) {
+    if (pitch == NOTE_LIGHT[i]) { setLight(i, 0); break; }
+  }
+}
+
+void handleControlChange(byte channel, byte number, byte value) {
+  if (gMode != MODE_MANUAL) return;
+  for (byte i = 0; i < NUM_LIGHTS; i++) {
+    if (number == CC_LIGHT[i]) { setLight(i, map(value, 0, 127, 0, 255)); return; }
+  }
+  if (number == CC_ALL_BRIGHT) setAllLights(map(value, 0, 127, 0, 255));
+}
+
+// ----------------------------------------------------------------------------------
+// ANIMATIONS
+// ----------------------------------------------------------------------------------
+bool isContinuous(byte a) {
+  return a == ANIM_SINE || a == ANIM_BREATHE;
+}
+
+void resetAnimState() {
+  gPhase = 0;
+  gLastRender = millis();
+  gStepAt = millis();
+  gAnimPos = 0;
+  gAnimDir = 1;
+  gBuildStep = 0;
+  gAltState = false;
+  gStrobeOn = false;
+  setAllLights(0);
+  if (!isContinuous(gAnimSel)) renderStep(gAnimSel);   // show the first frame now
+}
+
+// One "unit" in ms: a beat subdivision when clocked, else the free-run speed.
+unsigned long animUnitMs() {
+  if (clockActive()) {
+    long ms = (long)(SUBDIV_BEATS[gAnimSubdiv[gAnimSel]] * gBeatMs);
+    return max(20L, ms);
+  }
+  return map(gAnimSpeed[gAnimSel], 0, 255, UNIT_MS_MAX, UNIT_MS_MIN);  // right = faster
+}
+
+void updateAnim() {
+  unsigned long unit = animUnitMs();
+  byte a = gAnimSel;
+  if (isContinuous(a)) {
+    unsigned long now = millis();
+    gPhase += TWO_PI * (float)(now - gLastRender) / (float)unit;
+    gLastRender = now;
+    while (gPhase > TWO_PI) gPhase -= TWO_PI;
+    renderContinuous(a);
+  } else if (millis() - gStepAt >= unit) {
+    gStepAt = millis();
+    renderStep(a);
+  }
+}
+
+void decayAll() {
+  for (byte i = 0; i < NUM_LIGHTS; i++) setLight(i, gBrightness[i] - (gBrightness[i] >> TAIL_SHIFT));
+}
+
+void renderStep(byte a) {
+  switch (a) {
+    case ANIM_COMET:
+      decayAll();
+      gAnimPos = (gAnimPos + 1) % NUM_LIGHTS;
+      setLight(gAnimPos, 255);
+      break;
+    case ANIM_LARSON:
+      decayAll();
+      gAnimPos += gAnimDir;
+      if (gAnimPos >= NUM_LIGHTS - 1) { gAnimPos = NUM_LIGHTS - 1; gAnimDir = -1; }
+      else if (gAnimPos <= 0)        { gAnimPos = 0;              gAnimDir =  1; }
+      setLight(gAnimPos, 255);
+      break;
+    case ANIM_TWINKLE:
+      decayAll();
+      setLight(random(NUM_LIGHTS), 255);
+      break;
+    case ANIM_BUILD:
+      gBuildStep = (gBuildStep + 1) % (NUM_LIGHTS + 1);     // 0 = blackout
+      for (byte i = 0; i < NUM_LIGHTS; i++) setLight(i, i < gBuildStep ? 255 : 0);
+      break;
+    case ANIM_ALT:
+      gAltState = !gAltState;
+      setLight(0, gAltState ? 255 : 0);
+      setLight(2, gAltState ? 255 : 0);
+      setLight(1, gAltState ? 0 : 255);
+      setLight(3, gAltState ? 0 : 255);
+      break;
+    case ANIM_STROBE:
+      gStrobeOn = !gStrobeOn;
+      setAllLights(gStrobeOn ? 255 : 0);
+      break;
+  }
+}
+
+void renderContinuous(byte a) {
+  if (a == ANIM_SINE) {
+    for (byte i = 0; i < NUM_LIGHTS; i++) {
+      float s = sin(gPhase + i * (TWO_PI / NUM_LIGHTS));
+      setLight(i, (int)((s * 0.5f + 0.5f) * 255));
+    }
+  } else {  // ANIM_BREATHE
+    setAllLights((int)((sin(gPhase) * 0.5f + 0.5f) * 255));
+  }
+}
+
+// ----------------------------------------------------------------------------------
+// NEOPIXEL STRIP
+// ----------------------------------------------------------------------------------
+void clearStrip() {
+  for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, 0);
+  ledStrip.show();
+}
+
+void fillPixels(uint32_t color, byte litCount) {
+  for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, i < litCount ? color : 0);
+  ledStrip.show();
+}
+
+void lightOnePixel(byte index, uint32_t color) {
+  for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, i == index ? color : 0);
+  ledStrip.show();
+}
+
+void drawStrip() {
+  if (gMode == MODE_MANUAL) {
+    if (gManualBrightActive) {                      // brightness bar (warm yellow)
+      byte b;
+      if (gSelected == 0) {
+        int sum = 0;
+        for (byte i = 0; i < NUM_LIGHTS; i++) sum += gBrightness[i];
+        b = sum / NUM_LIGHTS;
+      } else {
+        b = gBrightness[gSelected - 1];
+      }
+      fillPixels(COLOR_WARM, map(b, 0, 255, 0, NUM_PIXELS));
+    } else if (gSelected == 0) {                     // ALL -> every pixel
+      fillPixels(COLOR_WARM, NUM_PIXELS);
+    } else {                                         // Light N -> the Nth pixel
+      lightOnePixel(gSelected - 1, COLOR_WARM);
+    }
+  } else {                                           // ANIMATION (red)
+    if (!gAnimRunning) {
+      lightOnePixel(gAnimSel, COLOR_RED);            // selection cursor
+    } else if (clockActive()) {
+      fillPixels(COLOR_RED, gAnimSubdiv[gAnimSel] + 1);                 // subdivision 1..5
+    } else {
+      fillPixels(COLOR_RED, map(gAnimSpeed[gAnimSel], 0, 255, 1, NUM_PIXELS));  // speed
+    }
   }
 }

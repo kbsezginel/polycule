@@ -1,56 +1,68 @@
 # Lunt
 MIDI-enabled controller for dimmable AC light bulbs, with on-device manual control.
 
-Lunt drives up to four 110/220 V dimmable bulbs through an AC dimmer module. It runs
-in two modes selected by a toggle switch: a **MIDI mode** that turns the bulbs into a
-light instrument driven from a keyboard/DAW, and a **manual mode** that lets you set
-each bulb's brightness by hand with a rotary encoder. An 8-LED NeoPixel strip is the
-on-device display.
+Lunt drives up to four 110/220 V dimmable bulbs through an AC dimmer module. A toggle
+switch selects between **MANUAL** (set each bulb's brightness by hand, or over MIDI) and
+**ANIMATION** (pick from self-running light shows). An 8-LED NeoPixel strip is the
+on-device display — **warm yellow** in MANUAL, **red** in ANIMATION.
 
 ## How it works
-An Arduino Nano reads incoming MIDI on its hardware serial port and controls the four
-channels of an [AC Light Dimmer Module](https://robotdyn.com/ac-light-dimmer-module-4-channel-3-3v-5v-logic-ac-50-60hz-220v-110v.html)
+An Arduino Nano controls the four channels of an [AC Light Dimmer Module](https://robotdyn.com/ac-light-dimmer-module-4-channel-3-3v-5v-logic-ac-50-60hz-220v-110v.html)
 via phase-cut dimming (the [Dimmable Light](https://github.com/fabianoriccardi/dimmable-light)
-library, synced to the AC zero-cross on D2).
+library, synced to the AC zero-cross on D2), and reads MIDI on its hardware serial port.
 
-A toggle switch picks the mode:
+The toggle switch picks the mode:
 
-- **MIDI mode** — the controller listens to MIDI. Notes turn bulbs on/off, Control
-  Change messages set brightness, and the MIDI clock drives animations. The NeoPixel
-  strip flashes on every beat as a tempo indicator.
-- **Manual mode** — MIDI is ignored. The rotary encoder sets the brightness of the
-  selected bulb; pressing the encoder cycles which bulb (or all of them) it controls.
-  The strip shows the current selection (by color) and its brightness (as a bar).
+- **MANUAL** — the encoder sets brightness; pressing it cycles the target (all bulbs or
+  one). MIDI notes/CC also set brightness. The strip is warm yellow and shows the target.
+- **ANIMATION** — pick one of 8 self-running animations from a menu and the bulbs play it
+  with no input needed. The encoder tunes the animation; a MIDI clock, if present, locks
+  it to the beat. The strip is red.
 
 ## Controls
 
-### MIDI mode
+### MANUAL mode
+| Control | Action |
+| --- | --- |
+| Turn encoder right / left | Brighter / dimmer (the selected target) |
+| Press encoder | Cycle the target: **ALL → 1 → 2 → 3 → 4** (defaults to ALL) |
+
+MIDI also drives brightness here (channel **15** by default, `MIDI_CHANNEL` in the sketch):
+
 | Message | Mapping |
 | --- | --- |
 | Note On / Off `C4`–`D#4` (60–63) | Turn bulbs 1–4 on/off (Note On velocity sets the on-brightness, Note Off turns it fully off) |
 | CC 22 / 23 / 24 / 25 | Brightness of bulb 1 / 2 / 3 / 4 |
 | CC 27 | Brightness of all bulbs at once |
-| CC 26 (≥64 on, <64 off) | Toggle the MIDI-clock light animation |
-| MIDI Clock / Start / Stop / Continue | Beat-synced animation: strip flashes each beat; when CC 26 is on, the bulbs pulse on the beat |
 
-MIDI channel is **15** by default (`MIDI_CHANNEL` in the sketch).
+The strip is **warm yellow**: **ALL** lights every pixel, **Light N** lights the Nth pixel.
+While you turn the encoder it shows a brightness bar, then reverts to the pixel number.
 
-### Manual mode
+### ANIMATION mode
+The strip is **red**. Each of the 8 animations sits on one of the 8 pixels.
+
 | Control | Action |
 | --- | --- |
-| Turn encoder right | Brighter |
-| Turn encoder left | Dimmer |
-| Press encoder | Cycle the selection: **ALL → 1 → 2 → 3 → 4 → ALL** (defaults to ALL on entry) |
+| Turn encoder (in menu) | Move the cursor over the 8 animations (the lit pixel = selection) |
+| Press encoder (in menu) | Enter the highlighted animation |
+| Turn encoder (running) | Adjust the animation (speed, or — with a MIDI clock — the beat subdivision) |
+| Press encoder (running) | Exit back to the selection menu |
 
-The NeoPixel strip color shows what's selected, and the lit length shows its brightness:
+| # | Animation | What it does |
+| --- | --- | --- |
+| 1 | Comet | A bright spot sweeps 1→2→3→4 with a fading tail |
+| 2 | Larson | A single bright bulb bounces 1→4→1 (Knight Rider) |
+| 3 | Sine sweep | A phase-offset sine wave rolls smoothly across the bulbs |
+| 4 | Breathe | All four fade up and down together |
+| 5 | Twinkle | Random bulbs sparkle bright then fade |
+| 6 | Build & drop | Fills 1→12→123→1234, blackout, repeat |
+| 7 | Alternate | 1&3 ↔ 2&4 swap back and forth |
+| 8 | Strobe | All bulbs flash together |
 
-| Selection | Strip color |
-| --- | --- |
-| ALL bulbs | ⚪ White |
-| Bulb 1 | 🔴 Red |
-| Bulb 2 | 🟢 Green |
-| Bulb 3 | 🔵 Blue |
-| Bulb 4 | 🟠 Amber |
+**MIDI clock:** when a clock is running, the animation beat-locks and the encoder selects
+the subdivision — **1 bar · 1/2 · 1/4 · 1/8 · 1/16** (shown as 1–5 red pixels). With no
+clock, the encoder sets a free speed (shown as a 1–8 red bar). MIDI notes/CC are ignored
+in ANIMATION mode.
 
 ## Hardware
 
@@ -96,18 +108,17 @@ switch grounds to `GND`.
 Nano's RX (D0). See the [SparkFun MIDI tutorial](https://learn.sparkfun.com/tutorials/midi-tutorial/all)
 for the standard input schematic.
 
-**Mode switch logic:** with the internal pull-up, the switch idles HIGH and reads LOW
-when closed to GND. The build treats one position as MIDI mode and the other as manual
-mode — flip `MIDI_MODE_LEVEL` in the sketch if your two modes come out reversed.
+**Mode switch logic:** with the internal pull-up, the switch idles HIGH (= MANUAL) and
+reads LOW when closed to GND (= ANIMATION). Flip `ANIM_MODE_LEVEL` in the sketch if your
+two modes come out reversed.
 
 ## Software
 
 ### lunt.ino
 [Lunt Arduino script.](https://github.com/kbsezginel/polycule/blob/master/lunt/lunt.ino)
 
-Adjustable knobs are grouped in the `CONFIG / KNOBS` section at the top of the sketch:
-mode-switch polarity (`MIDI_MODE_LEVEL`), encoder step size (`ENCODER_STEP`), the
-note/CC numbers, and the default state of the clock animation (`gClockAnim`).
+Adjustable knobs are grouped in the `CONFIG / KNOBS` section at the top of the sketch.
+See [Tunable parameters](#tunable-parameters) for the full list with values and ranges.
 
 ### Libraries
 Install via the Arduino Library Manager:
@@ -122,6 +133,46 @@ Build with the **Arduino AVR Boards** core **1.8.3** — see
 - **Board:** Arduino Nano (Tools → Board → Arduino AVR Boards → Arduino Nano)
 - **Processor:** ATmega328P, or **ATmega328P (Old Bootloader)** on most CH340 clones
 - **Port:** the CH340 / USB-serial port (not a Bluetooth port)
+
+## Tunable parameters
+All are `const` (or `#define`) in the `CONFIG / KNOBS` block at the top of `lunt.ino`,
+except where noted. Pins are in the [Wiring](#wiring) table. "Range" is the sensible
+working range, not the data-type limit.
+
+### Modes & input
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `ANIM_MODE_LEVEL` | `LOW` | `LOW` / `HIGH` | Switch level that selects ANIMATION (the other position is MANUAL). |
+| `ENCODER_STEP` | 8 | 1–32 | Brightness / free-speed change per encoder detent. |
+| `BUTTON_DEBOUNCE_MS` | 200 | 50–500 | Minimum ms between accepted encoder-button presses. |
+
+### MIDI (MANUAL mode)
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `MIDI_CHANNEL` | 15 | 1–16 | Channel the controller listens on. |
+| `NOTE_LIGHT[4]` | 60, 61, 62, 63 | 0–127 each | Note numbers that turn bulbs 1–4 on/off. |
+| `NOTE_MIN_BRIGHT` | 40 | 0–255 | Brightness of a note played at the softest velocity. |
+| `CC_LIGHT[4]` | 22, 23, 24, 25 | 0–127 each | CC numbers that set bulbs 1–4 brightness. |
+| `CC_ALL_BRIGHT` | 27 | 0–127 | CC number that sets all bulbs at once. |
+
+### Strip
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `NUM_PIXELS` | 8 | 1–~60 | Number of LEDs on the strip; set to match yours. |
+| `ledStrip.setBrightness()` | 60 | 0–255 | Overall strip brightness cap (set inline in `setup()`). |
+| `COLOR_WARM` | (255,130,15) | any RGB | MANUAL-mode strip color (set in `setup()`). |
+| `COLOR_RED` | (255,0,0) | any RGB | ANIMATION-mode strip color (set in `setup()`). |
+| `MANUAL_BRIGHT_SHOW_MS` | 1200 | 500–3000 | How long the brightness bar shows after a turn before reverting. |
+
+### Animation timing
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `UNIT_MS_MIN` | 80 | 20–300 | Free-run unit at full speed (one step / one cycle). |
+| `UNIT_MS_MAX` | 2000 | 500–5000 | Free-run unit at the slowest speed. |
+| `TAIL_SHIFT` | 2 | 1–4 | Comet/larson/twinkle tail fade: `b -= b >> this` (smaller = longer tail). |
+| `CLOCK_TIMEOUT_MS` | 600 | 300–2000 | Clock is treated as absent (→ free speed) after this gap. |
+
+Beat-lock subdivisions are fixed in `SUBDIV_BEATS` (1 bar, 1/2, 1/4, 1/8, 1/16).
 
 ## Troubleshooting
 
