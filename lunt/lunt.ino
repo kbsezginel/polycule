@@ -45,7 +45,7 @@ const byte CC_ALL_BRIGHT   = 27;                 // brightness of all lights at 
 
 // Animation timing. Free-run speed maps (linearly in BPM) to a "unit" = one step
 // (stepwise anims) or one cycle (continuous anims), treating one unit as a beat.
-const int  ANIM_BPM_MIN = 40;                    // encoder fully left  (slowest)
+const int  ANIM_BPM_MIN = 20;                    // encoder fully left  (slowest, ~3s/unit)
 const int  ANIM_BPM_MAX = 250;                   // encoder fully right (fastest)
 const byte TAIL_SHIFT = 2;                       // comet/larson/twinkle fade: b -= b >> this
 
