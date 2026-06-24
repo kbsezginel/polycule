@@ -15,9 +15,8 @@
 //   * AUDIO -> react to a microphone; MIDI is ignored.
 //       - Encoder press : select the animation (number shown on the strip).
 //       - Encoder turn  : adjust the current animation's parameter (shown briefly).
-//       Animations:
-//         0) amplitude -> brightness        (encoder = sensitivity)
-//         1) amplitude -> brightness w/ LPF (encoder = low-pass cutoff / spectrum)
+//       Animations: 1) amplitude->brightness  2) amplitude->brightness w/ LPF
+//                    3) spectrum split  4) beat pulse  5) breathing  6) sidechain/duck
 // ----------------------------------------------------------------------------------
 #include <MIDI.h>
 #include <Adafruit_NeoPixel.h>

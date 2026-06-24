@@ -137,10 +137,8 @@ your two modes come out reversed.
 ### lunt.ino
 [Lunt Arduino script.](https://github.com/kbsezginel/polycule/blob/master/lunt/lunt.ino)
 
-Adjustable knobs are grouped in the `CONFIG / KNOBS` section at the top of the sketch:
-mode-switch polarity (`AUDIO_MODE_LEVEL`), encoder step sizes (`ENCODER_STEP` /
-`AUDIO_PARAM_STEP`), the note/CC numbers, the clock-pulse default (`gClockAnim`), and
-the audio response (`AUDIO_*`).
+Adjustable knobs are grouped in the `CONFIG / KNOBS` section at the top of the sketch.
+See [Tunable parameters](#tunable-parameters) for the full list with values and ranges.
 
 ### Libraries
 Install via the Arduino Library Manager:
@@ -155,6 +153,74 @@ Build with the **Arduino AVR Boards** core **1.8.3** — see
 - **Board:** Arduino Nano (Tools → Board → Arduino AVR Boards → Arduino Nano)
 - **Processor:** ATmega328P, or **ATmega328P (Old Bootloader)** on most CH340 clones
 - **Port:** the CH340 / USB-serial port (not a Bluetooth port)
+
+## Tunable parameters
+All of these are `const` (or `#define`) at the top of `lunt.ino` in the `CONFIG / KNOBS`
+section, except where noted. Pin assignments live in the [Wiring](#wiring) table.
+"Range" is the sensible working range, not the data-type limit.
+
+### Modes & input
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `AUDIO_MODE_LEVEL` | `LOW` | `LOW` / `HIGH` | Switch level that selects AUDIO mode (the other position is MIDI+MANUAL). Flip if reversed. |
+| `ENCODER_STEP` | 8 | 1–32 | Brightness change per encoder detent in MIDI+MANUAL mode. |
+| `AUDIO_PARAM_STEP` | 8 | 1–32 | Animation-parameter change per encoder detent in AUDIO mode. |
+| `BUTTON_DEBOUNCE_MS` | 200 | 50–500 | Minimum ms between accepted encoder-button presses. |
+
+### MIDI mapping
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `MIDI_CHANNEL` | 15 | 1–16 | Channel the controller listens on. |
+| `NOTE_LIGHT[4]` | 60, 61, 62, 63 | 0–127 each | Note numbers that turn bulbs 1–4 on/off. |
+| `NOTE_MIN_BRIGHT` | 40 | 0–255 | Brightness of a note played at the softest velocity. |
+| `CC_LIGHT[4]` | 22, 23, 24, 25 | 0–127 each | CC numbers that set bulbs 1–4 brightness. |
+| `CC_ALL_BRIGHT` | 27 | 0–127 | CC number that sets all bulbs at once. |
+| `CC_CLOCK_ANIM` | 26 | 0–127 | CC number that toggles the clock beat-pulse (≥64 on). |
+| `gClockAnim` | `false` | `true` / `false` | Whether the MIDI clock pulses the bulbs by default. |
+
+### NeoPixel strip
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `NUM_PIXELS` | 8 | 1–~60 | Number of LEDs on the strip; set to match yours. |
+| `ledStrip.setBrightness()` | 60 | 0–255 | Overall strip brightness cap (set inline in `setup()`). |
+
+### Audio — general
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `AUDIO_PIN` | `A2` | A2/A3/A6/A7 | Analog pin the mic amp output feeds. |
+| `AUDIO_WINDOW_MS` | 25 | 10–50 | Window over which loudness is measured / outputs update. |
+| `AUDIO_PP_MIN` | 20 | 5–100 | Peak-to-peak (ADC counts) below this is treated as silence. |
+| `AUDIO_RELEASE` | 6 | 1–40 | How fast brightness falls per window (VU release). |
+| `AUDIO_PARAM_SHOW_MS` | 1200 | 500–3000 | How long the parameter bar shows on the strip after a turn. |
+
+### Audio — per-animation sensitivity (full-scale loudness)
+Lower value = more sensitive (less sound reaches full brightness).
+
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `AUDIO_PP_FULL_MAX` | 800 | 200–1023 | Amp→brightness full-scale at minimum sensitivity (anim 1). |
+| `AUDIO_PP_FULL_MIN` | 60 | 20–400 | Amp→brightness full-scale at maximum sensitivity (anim 1). |
+| `AUDIO_PP_FULL_LPF` | 250 | 50–1023 | Full-scale for the low-pass animation (anim 2). |
+| `AUDIO_PP_FULL_SPLIT_MAX` | 400 | 100–800 | Spectrum per-band full-scale at min sensitivity (anim 3). |
+| `AUDIO_PP_FULL_SPLIT_MIN` | 60 | 20–300 | Spectrum per-band full-scale at max sensitivity (anim 3). |
+| `AUDIO_PP_FULL_BREATH` | 400 | 100–1023 | Loudness full-scale for breathing (anim 5). |
+| `AUDIO_PP_FULL_DUCK` | 400 | 100–1023 | Loudness full-scale for sidechain duck (anim 6). |
+
+### Audio — filters & beat detection
+Filter `*_ALPHA` values are one-pole coefficients (alpha/256 per sample): smaller =
+lower cutoff / slower.
+
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `DC_ALPHA` | 2 | 1–16 | DC blocker speed (removes the ~2.5 V mic bias). |
+| `SPLIT_ALPHA1` | 8 | 1–256 | Bass \| low-mid crossover (anim 3). |
+| `SPLIT_ALPHA2` | 40 | 1–256 | Low-mid \| high-mid crossover (anim 3). |
+| `SPLIT_ALPHA3` | 140 | 1–256 | High-mid \| treble crossover (anim 3). |
+| `BEAT_BASS_ALPHA` | 30 | 1–256 | Bass band used for beat detection (anim 4). |
+| `BEAT_AVG_ALPHA` | 24 | 1–128 | How fast the beat energy average adapts. |
+| `BEAT_PP_MIN` | 25 | 5–200 | Ignore beats with bass energy below this. |
+| `BEAT_DECAY` | 28 | 1–128 | How fast the beat pulse fades per window. |
+| `SIDE_RELEASE` | 8 | 1–64 | How fast sidechain duck recovers per window (anim 6). |
 
 ## Troubleshooting
 
