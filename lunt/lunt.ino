@@ -7,10 +7,11 @@
 // The SWITCH chooses one of two top-level modes:
 //
 //   * MIDI+MANUAL -> MIDI and the encoder are both live.
-//       - Encoder turn  : set brightness of the selected bulb.
-//       - Encoder press : cycle the target ALL -> 1 -> 2 -> 3 -> 4 -> ALL.
+//       - Encoder press : cycle the target ALL -> 1 -> 2 -> 3 -> 4 -> animations.
+//       - Encoder turn  : on ALL/1-4, set brightness; on an animation, set its speed.
 //       - Incoming MIDI : notes turn bulbs on/off, CC sets brightness, clock can pulse.
-//       - Strip shows the selected target (color) + its brightness (bar).
+//       - Self-running animations (no input): comet, sine sweep, breathe, larson,
+//         twinkle. Strip shows the target/brightness or the animation number.
 //
 //   * AUDIO -> react to a microphone; MIDI is ignored.
 //       - Encoder press : select the animation (number shown on the strip).
@@ -28,8 +29,15 @@
 #define AUDIO_MODE_LEVEL   LOW
 
 // Encoder feel (per detent / click of the knob).
-const int  ENCODER_STEP      = 8;   // brightness change in MIDI+MANUAL mode
+const int  ENCODER_STEP      = 8;   // brightness (or anim speed) change in MIDI+MANUAL
 const int  AUDIO_PARAM_STEP  = 8;   // animation-parameter change in AUDIO mode
+
+// MIDI+MANUAL self-running animations (no input needed). Frame rate is set by the
+// per-animation speed; the encoder adjusts it (right = faster).
+const int   MANUAL_FRAME_MIN_MS = 12;    // frame time at full speed
+const int   MANUAL_FRAME_MAX_MS = 180;   // frame time at slowest
+const float MANUAL_PHASE_STEP   = 0.20;  // sine/breathe radians advanced per frame
+const byte  MANUAL_TAIL_SHIFT   = 2;     // comet/larson/twinkle fade: b -= b >> this
 
 // MIDI note -> light mapping (one note per light). Note ON sets brightness from
 // velocity, Note OFF turns the light fully off.
@@ -107,11 +115,28 @@ TopMode gMode = MODE_MIDI_MANUAL;
 
 bool gStripDirty = true;           // MIDI+MANUAL strip needs redraw
 
-// MIDI+MANUAL selection: 0 = ALL lights (the default), 1..4 = single light.
-// Pressing the encoder cycles ALL -> 1 -> 2 -> 3 -> 4 -> ALL.
+// MIDI+MANUAL selection: 0 = ALL, 1..4 = single light (NUM_BRIGHTNESS_STATES total),
+// then 5.. = self-running animations. Pressing the encoder cycles through all of them.
+const byte NUM_BRIGHTNESS_STATES = NUM_LIGHTS + 1;
 byte gSelected = 0;
 bool gButtonLast = false;
 unsigned long gButtonLastTime = 0;
+
+// MIDI+MANUAL self-running animations (selected after the brightness states).
+enum ManualAnim {
+  MANIM_COMET,     // bright spot sweeps with a fading tail
+  MANIM_SINE,      // phase-offset sine wave rolls across the bulbs
+  MANIM_BREATHE,   // all bulbs fade up/down together
+  MANIM_LARSON,    // single bright bulb bounces back and forth
+  MANIM_TWINKLE,   // random bulbs sparkle and fade
+  NUM_MANUAL_ANIMS
+};
+int   gManualSpeed[NUM_MANUAL_ANIMS] = {128, 128, 128, 128, 128};  // per-anim, 0..255
+unsigned long gManualFrameAt = 0;
+int   gManualPos = 0;              // chase / larson position
+int   gManualDir = 1;              // larson direction
+float gManualPhase = 0;            // sine / breathe phase
+bool  gManualAnimStripDirty = true;
 
 // Rotary encoder: polled quadrature state-table decoder (Ben Buxton style). It only
 // emits a step on a complete, valid detent transition, so contact bounce and noise
@@ -228,9 +253,17 @@ void loop() {
 
   if (gMode == MODE_MIDI_MANUAL) {
     MIDI.read();                                  // notes/CC/clock drive the bulbs
-    if (gStripDirty) {
-      drawManualStrip();
-      gStripDirty = false;
+    if (gSelected < NUM_BRIGHTNESS_STATES) {      // brightness control (ALL / 1-4)
+      if (gStripDirty) {
+        drawManualStrip();
+        gStripDirty = false;
+      }
+    } else {                                      // a self-running animation owns the bulbs
+      updateManualAnim();
+      if (gManualAnimStripDirty) {
+        drawManualAnimStrip();
+        gManualAnimStripDirty = false;
+      }
     }
   } else {                                        // MODE_AUDIO (MIDI ignored)
     updateAudio();                                // current animation drives the bulbs
@@ -291,10 +324,13 @@ void handleEncoder() {
   bool right = (dir == DIR_CCW);
 
   if (gMode == MODE_MIDI_MANUAL) {
-    int delta = right ? ENCODER_STEP : -ENCODER_STEP;     // right brightens
-    if (gSelected == 0) {                                 // ALL selected
+    int delta = right ? ENCODER_STEP : -ENCODER_STEP;
+    if (gSelected >= NUM_BRIGHTNESS_STATES) {             // animation: adjust speed
+      byte a = gSelected - NUM_BRIGHTNESS_STATES;
+      gManualSpeed[a] = constrain(gManualSpeed[a] + delta, 0, 255);  // right = faster
+    } else if (gSelected == 0) {                          // ALL selected: brighten
       for (byte i = 0; i < NUM_LIGHTS; i++) setLight(i, gBrightness[i] + delta);
-    } else {
+    } else {                                              // single bulb: brighten
       setLight(gSelected - 1, gBrightness[gSelected - 1] + delta);
     }
   } else {                                                // AUDIO: adjust anim parameter
@@ -309,8 +345,14 @@ void handleButton() {
   if (pressed && !gButtonLast && (millis() - gButtonLastTime > BUTTON_DEBOUNCE_MS)) {
     gButtonLastTime = millis();
     if (gMode == MODE_MIDI_MANUAL) {
-      gSelected = (gSelected + 1) % (NUM_LIGHTS + 1);     // ALL, 1, 2, 3, 4
-      gStripDirty = true;
+      // ALL, 1, 2, 3, 4, then the self-running animations.
+      gSelected = (gSelected + 1) % (NUM_BRIGHTNESS_STATES + NUM_MANUAL_ANIMS);
+      if (gSelected >= NUM_BRIGHTNESS_STATES) {
+        resetManualAnim();
+        gManualAnimStripDirty = true;
+      } else {
+        gStripDirty = true;
+      }
     } else {
       gAudioAnim = (gAudioAnim + 1) % NUM_AUDIO_ANIMS;    // next animation
       resetAudioEnvelope();
@@ -371,6 +413,77 @@ uint32_t colorWheel(byte pos) {
   if (pos < 170) { pos -= 85;  return ledStrip.Color(0, pos * 3, 255 - pos * 3); }
   pos -= 170;
   return ledStrip.Color(pos * 3, 255 - pos * 3, 0);
+}
+
+// ----------------------------------------------------------------------------------
+// MIDI+MANUAL SELF-RUNNING ANIMATIONS (no audio / MIDI input needed)
+// ----------------------------------------------------------------------------------
+void resetManualAnim() {
+  gManualPos = 0;
+  gManualDir = 1;
+  gManualPhase = 0;
+  gManualFrameAt = millis();
+  setAllLights(0);              // start from black
+}
+
+// Fade every bulb toward 0 (the tail for comet / larson / twinkle).
+void manualDecayAll() {
+  for (byte i = 0; i < NUM_LIGHTS; i++) {
+    setLight(i, gBrightness[i] - (gBrightness[i] >> MANUAL_TAIL_SHIFT));
+  }
+}
+
+// Advance and render the selected animation on a per-frame timer.
+void updateManualAnim() {
+  byte a = gSelected - NUM_BRIGHTNESS_STATES;
+  int interval = map(gManualSpeed[a], 0, 255, MANUAL_FRAME_MAX_MS, MANUAL_FRAME_MIN_MS);
+  if (millis() - gManualFrameAt < (unsigned long)interval) {
+    return;
+  }
+  gManualFrameAt = millis();
+
+  switch (a) {
+    case MANIM_COMET: {
+      manualDecayAll();
+      gManualPos = (gManualPos + 1) % NUM_LIGHTS;
+      setLight(gManualPos, 255);
+      break;
+    }
+    case MANIM_SINE: {
+      gManualPhase += MANUAL_PHASE_STEP;
+      if (gManualPhase > TWO_PI) gManualPhase -= TWO_PI;
+      for (byte i = 0; i < NUM_LIGHTS; i++) {
+        float s = sin(gManualPhase + i * (TWO_PI / NUM_LIGHTS));
+        setLight(i, (int)((s * 0.5f + 0.5f) * 255));
+      }
+      break;
+    }
+    case MANIM_BREATHE: {
+      gManualPhase += MANUAL_PHASE_STEP;
+      if (gManualPhase > TWO_PI) gManualPhase -= TWO_PI;
+      setAllLights((int)((sin(gManualPhase) * 0.5f + 0.5f) * 255));
+      break;
+    }
+    case MANIM_LARSON: {
+      manualDecayAll();
+      gManualPos += gManualDir;
+      if (gManualPos >= NUM_LIGHTS - 1) { gManualPos = NUM_LIGHTS - 1; gManualDir = -1; }
+      else if (gManualPos <= 0)        { gManualPos = 0;              gManualDir =  1; }
+      setLight(gManualPos, 255);
+      break;
+    }
+    case MANIM_TWINKLE: {
+      manualDecayAll();
+      setLight(random(NUM_LIGHTS), 255);
+      break;
+    }
+  }
+}
+
+// Strip shows the animation number (anim+1 pixels) in a distinct hue.
+void drawManualAnimStrip() {
+  byte a = gSelected - NUM_BRIGHTNESS_STATES;
+  fillStrip(colorWheel((byte)(a * 40 + 160)), a + 1);
 }
 
 // ----------------------------------------------------------------------------------

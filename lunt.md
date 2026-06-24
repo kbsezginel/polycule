@@ -14,10 +14,11 @@ library, synced to the AC zero-cross on D2).
 
 The toggle switch picks the mode:
 
-- **MIDI+MANUAL** — MIDI and the rotary encoder are both live. Turn the encoder to set
-  the selected bulb's brightness and press it to choose the target; meanwhile incoming
-  MIDI notes/CC also drive the bulbs. The strip shows the selected target (color) and
-  its brightness (bar).
+- **MIDI+MANUAL** — MIDI and the rotary encoder are both live. Press the encoder to
+  choose a target (a bulb / all / a self-running animation) and turn it to set
+  brightness or, on an animation, its speed; meanwhile incoming MIDI notes/CC also
+  drive the bulbs. The strip shows the selected target and its brightness, or the
+  animation number.
 - **AUDIO** — MIDI is ignored; the bulbs react to a microphone. Press the encoder to
   pick an animation (its number shows on the strip) and turn the encoder to adjust that
   animation's parameter.
@@ -25,15 +26,18 @@ The toggle switch picks the mode:
 ## Controls
 
 ### MIDI+MANUAL mode
-Encoder:
+Pressing the encoder cycles through the targets — the five brightness controls first,
+then the self-running animations:
 
-| Control | Action |
-| --- | --- |
-| Turn encoder right | Brighter (selected bulb / ALL) |
-| Turn encoder left | Dimmer |
-| Press encoder | Cycle the target: **ALL → 1 → 2 → 3 → 4 → ALL** (defaults to ALL) |
+**ALL → 1 → 2 → 3 → 4 → [animations] → ALL**
 
-MIDI (channel **15** by default, `MIDI_CHANNEL` in the sketch):
+| Control | On a brightness target (ALL / 1–4) | On an animation |
+| --- | --- | --- |
+| Turn encoder right | Brighter | Faster |
+| Turn encoder left | Dimmer | Slower |
+
+MIDI (channel **15** by default, `MIDI_CHANNEL` in the sketch) — active on the brightness
+targets; an animation overrides the bulbs while it's selected:
 
 | Message | Mapping |
 | --- | --- |
@@ -42,8 +46,8 @@ MIDI (channel **15** by default, `MIDI_CHANNEL` in the sketch):
 | CC 27 | Brightness of all bulbs at once |
 | CC 26 (≥64 on, <64 off) | Pulse the bulbs on the MIDI beat (clock) |
 
-The strip shows the selected target by color, and the lit length tracks its brightness
-(from either source):
+On a brightness target the strip shows it by color, with the lit length tracking its
+brightness (from either source); on an animation it shows the animation number:
 
 | Target | Strip color |
 | --- | --- |
@@ -52,6 +56,16 @@ The strip shows the selected target by color, and the lit length tracks its brig
 | Bulb 2 | 🟢 Green |
 | Bulb 3 | 🔵 Blue |
 | Bulb 4 | 🟠 Amber |
+
+Self-running animations (no audio/MIDI needed — the encoder turn sets the speed):
+
+| # | Animation | What it does |
+| --- | --- | --- |
+| 1 | Comet | A bright spot sweeps 1→2→3→4 with a fading tail |
+| 2 | Sine sweep | A phase-offset sine wave rolls smoothly across the bulbs |
+| 3 | Breathe | All four fade up and down together |
+| 4 | Larson scanner | A single bright bulb bounces 1→4→1 (Knight Rider) |
+| 5 | Twinkle | Random bulbs sparkle bright then fade |
 
 ### AUDIO mode
 
@@ -163,9 +177,17 @@ section, except where noted. Pin assignments live in the [Wiring](#wiring) table
 | Variable | Value | Range | Description |
 | --- | --- | --- | --- |
 | `AUDIO_MODE_LEVEL` | `LOW` | `LOW` / `HIGH` | Switch level that selects AUDIO mode (the other position is MIDI+MANUAL). Flip if reversed. |
-| `ENCODER_STEP` | 8 | 1–32 | Brightness change per encoder detent in MIDI+MANUAL mode. |
+| `ENCODER_STEP` | 8 | 1–32 | Brightness (or animation-speed) change per detent in MIDI+MANUAL mode. |
 | `AUDIO_PARAM_STEP` | 8 | 1–32 | Animation-parameter change per encoder detent in AUDIO mode. |
 | `BUTTON_DEBOUNCE_MS` | 200 | 50–500 | Minimum ms between accepted encoder-button presses. |
+
+### MIDI+MANUAL animations
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `MANUAL_FRAME_MIN_MS` | 12 | 5–50 | Frame time at full speed (smaller = faster). |
+| `MANUAL_FRAME_MAX_MS` | 180 | 80–500 | Frame time at the slowest speed setting. |
+| `MANUAL_PHASE_STEP` | 0.20 | 0.05–0.6 | Radians the sine/breathe phase advances per frame. |
+| `MANUAL_TAIL_SHIFT` | 2 | 1–4 | Comet/larson/twinkle tail fade: `b -= b >> this` (smaller = longer tail). |
 
 ### MIDI mapping
 | Variable | Value | Range | Description |
