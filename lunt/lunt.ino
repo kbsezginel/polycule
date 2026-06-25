@@ -17,10 +17,11 @@
 //   * ANIMATION (strip = red)
 //       - Selection menu: turn to move the cursor over the 8 animations (one pixel each),
 //         press to enter, press again to exit back to the menu.
-//       - In an animation: encoder sets its parameter (shown on the strip). MIDI notes/CC
-//         are ignored. If a MIDI clock is present the animation beat-locks and the encoder
-//         picks the subdivision (1 bar / 1/2 / 1/4 / 1/8 / 1/16). The right two pixels show
-//         the tempo (blue=no clock / purple=beat) and the subdivision (orange).
+//       - In an animation: encoder sets its parameter (shown on the strip). A short press
+//         re-syncs the animation to that moment (tap on the beat); a long hold exits to the
+//         menu. MIDI notes/CC are ignored. If a MIDI clock is present the animation
+//         beat-locks and the encoder picks the subdivision (1 bar / 1/2 / 1/4 / 1/8 / 1/16).
+//         The right two pixels show the tempo (blue=no clock / purple=beat) and subdivision.
 //       - Animations: comet, larson, sine sweep, breathe, twinkle, build, alternate, strobe.
 // ----------------------------------------------------------------------------------
 #include <MIDI.h>
@@ -34,6 +35,7 @@
 
 const int  ENCODER_STEP   = 8;     // brightness / free-speed change per encoder detent
 const unsigned long BUTTON_DEBOUNCE_MS = 200;
+const unsigned long LONG_PRESS_MS = 600;    // hold this long inside an animation to exit
 const byte MANUAL_RESET_BRIGHTNESS = 128;   // all bulbs reset to this on entering MANUAL
 const byte STRIP_BRIGHTNESS_DEFAULT = 60;   // NeoPixel indicator brightness at boot, 0-255
 const byte STRIP_BRIGHTNESS_MIN = 5;        // floor so the indicator never goes fully dark
@@ -130,9 +132,11 @@ byte gStripBrightness = STRIP_BRIGHTNESS_DEFAULT;   // NeoPixel brightness, appl
 bool gTempoLightOn = true;     // show the tempo / clock indicator (far-right pixel)
 bool gSubdivLightOn = true;    // show the subdivision indicator (second from right)
 
-// Encoder button.
-bool gButtonLast = false;
-unsigned long gButtonLastTime = 0;
+// Encoder button (with press-down / long-hold detection).
+bool gBtnDown = false;
+unsigned long gBtnDownAt = 0;
+unsigned long gBtnUpAt = 0;
+bool gBtnLongFired = false;
 
 // Rotary encoder: polled quadrature state-table decoder (Ben Buxton style).
 #define R_START     0x0
@@ -347,23 +351,38 @@ void handleEncoder() {
 
 void handleButton() {
   bool pressed = (digitalRead(RE_BUTTON_PIN) == LOW);
-  if (pressed && !gButtonLast && (millis() - gButtonLastTime > BUTTON_DEBOUNCE_MS)) {
-    gButtonLastTime = millis();
+  unsigned long now = millis();
+
+  if (pressed && !gBtnDown && (now - gBtnUpAt > BUTTON_DEBOUNCE_MS)) {
+    // --- press-down edge ---
+    gBtnDown = true;
+    gBtnDownAt = now;
+    gBtnLongFired = false;
     if (gMode == MODE_MANUAL) {
-      gSelected = (gSelected + 1) % NUM_MANUAL_TARGETS;   // ALL, 1-4, STRIP
+      gSelected = (gSelected + 1) % NUM_MANUAL_TARGETS;   // ALL, 1-4, STRIP, TEMPO, SUBDIV
       gManualBrightActive = false;
       gStripDirty = true;
     } else if (!gAnimRunning) {
-      gAnimRunning = true;                       // enter the selected animation
+      gAnimRunning = true;             // enter the selected animation
       resetAnimState();
       gStripDirty = true;
+      gBtnLongFired = true;            // the entering press isn't a re-sync/exit
     } else {
-      gAnimRunning = false;                      // exit back to the menu
-      setAllLights(0);
+      resetAnimState();               // short press = re-sync, anchored to this moment
       gStripDirty = true;
     }
+  } else if (pressed && gBtnDown && !gBtnLongFired &&
+             gMode == MODE_ANIM && gAnimRunning && (now - gBtnDownAt >= LONG_PRESS_MS)) {
+    // --- long hold inside an animation -> exit to the menu ---
+    gAnimRunning = false;
+    setAllLights(0);
+    gStripDirty = true;
+    gBtnLongFired = true;
+  } else if (!pressed && gBtnDown) {
+    // --- release ---
+    gBtnDown = false;
+    gBtnUpAt = now;
   }
-  gButtonLast = pressed;
 }
 
 // ----------------------------------------------------------------------------------
@@ -433,6 +452,7 @@ void resetAnimState() {
   gPhase = 0;
   gLastRender = millis();
   gStepAt = millis();
+  gUnitPulseAt = millis();
   gAnimPos = 0;
   gAnimDir = 1;
   gBuildStep = 0;

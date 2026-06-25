@@ -61,7 +61,8 @@ The strip is **red**. Each of the 8 animations sits on one of the 8 pixels.
 | Turn encoder (in menu) | Move the cursor over the 8 animations (the lit pixel = selection) |
 | Press encoder (in menu) | Enter the highlighted animation |
 | Turn encoder (running) | Adjust the animation (speed, or — with a MIDI clock — the beat subdivision) |
-| Press encoder (running) | Exit back to the selection menu |
+| Short press (running) | Re-sync: restart the animation at that instant — tap on the beat to line it up with the music |
+| Long hold (running) | Exit back to the selection menu (`LONG_PRESS_MS`) |
 
 | # | Animation | What it does |
 | --- | --- | --- |
@@ -170,6 +171,7 @@ working range, not the data-type limit.
 | `ANIM_MODE_LEVEL` | `LOW` | `LOW` / `HIGH` | Switch level that selects ANIMATION (the other position is MANUAL). |
 | `ENCODER_STEP` | 8 | 1–32 | Brightness / free-speed change per encoder detent. |
 | `BUTTON_DEBOUNCE_MS` | 200 | 50–500 | Minimum ms between accepted encoder-button presses. |
+| `LONG_PRESS_MS` | 600 | 300–1500 | Hold time to exit an animation (shorter = a re-sync). |
 | `MANUAL_RESET_BRIGHTNESS` | 128 | 0–255 | All bulbs reset to this level when MANUAL mode is entered. |
 
 ### MIDI (MANUAL mode)
