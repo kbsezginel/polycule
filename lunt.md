@@ -25,11 +25,18 @@ The toggle switch picks the mode:
 | Control | Action |
 | --- | --- |
 | Turn encoder right / left | Brighter / dimmer (the selected target) |
-| Press encoder | Cycle the target: **ALL → 1 → 2 → 3 → 4 → STRIP** (defaults to ALL) |
+| Press encoder | Cycle the target: **ALL → 1 → 2 → 3 → 4 → STRIP → TEMPO → SUBDIV** (defaults to ALL) |
 
-The last target, **STRIP**, sets the NeoPixel indicator's overall brightness (it shows a
-warm-yellow bar that also dims/brightens live). That brightness **persists into ANIMATION
-mode** too. Floor is `STRIP_BRIGHTNESS_MIN` so the indicator never goes fully dark.
+After the four bulbs there are three setting targets (turn the encoder to adjust each):
+
+- **STRIP** — the NeoPixel indicator's overall brightness (a warm-yellow bar that dims/
+  brightens live). Persists into ANIMATION mode too; floored by `STRIP_BRIGHTNESS_MIN`.
+- **TEMPO** — toggle the tempo/clock indicator on/off (right = on, left = off). Shown as
+  the far-right pixel lit blue when enabled.
+- **SUBDIV** — toggle the subdivision indicator on/off. Shown as the second-from-right
+  pixel lit orange when enabled.
+
+No MIDI/clock info is shown on the strip in MANUAL mode itself — only these toggles.
 
 MIDI also drives brightness here (channel **15** by default, `MIDI_CHANNEL` in the sketch):
 
@@ -69,12 +76,18 @@ The strip is **red**. Each of the 8 animations sits on one of the 8 pixels.
 
 **MIDI clock:** when a clock is running, the animation beat-locks and the encoder selects
 the subdivision — **1 bar · 1/2 · 1/4 · 1/8 · 1/16** (shown as 1–5 red pixels). With no
-clock, the encoder sets a free speed of **20–250 BPM** (shown as a 1–8 red bar). MIDI
-notes/CC are ignored in ANIMATION mode.
+clock, the encoder sets a free speed of **20–250 BPM** (shown as a red bar). MIDI notes/CC
+are ignored in ANIMATION mode.
 
-**Clock indicator:** whenever a MIDI clock is being received, the **far-right pixel**
-glows **purple** (dim between beats, bright flash on each beat) — in both modes. If it
-stays dark while you send clock, the Arduino isn't receiving it (see Troubleshooting).
+**Clock indicators** (right two pixels, while an animation is running):
+- **Tempo** (far-right): **blue** steady when no clock; **purple** flashing on each beat
+  when a clock is present.
+- **Subdivision** (second from right): **orange**, flashing at the selected subdivision
+  rate — only when a clock is present.
+
+Each can be turned off via the MANUAL **TEMPO** / **SUBDIV** targets. If the tempo pixel
+never turns purple while you send clock, the Arduino isn't receiving it (see
+Troubleshooting).
 
 ## Hardware
 
@@ -228,8 +241,9 @@ Flip the `right` test in `handleEncoder()` to reverse the knob direction; the st
 left/right mapping is in `fillPixels()` / `lightOnePixel()`.
 
 ### MIDI clock isn't detected (animations don't beat-lock)
-First check the **clock indicator** — the far-right pixel turns purple when a clock is
-arriving. If it stays dark:
+First check the **clock indicator**: enter an animation (ANIMATION mode → press the
+encoder) and watch the far-right pixel — it turns purple and flashes on the beat when a
+clock is arriving. If it stays blue (or dark):
 - **Enable clock output** on the source. Most DAWs/keyboards don't send MIDI clock by
   default — turn on "send MIDI clock / sync" for the correct port.
 - **Press play.** Many sources only send clock while the transport is running; just

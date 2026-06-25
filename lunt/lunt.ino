@@ -5,10 +5,12 @@
 //
 // The SWITCH chooses one of two modes:
 //
-//   * MANUAL (strip = warm yellow)
-//       - Encoder press : cycle the target ALL -> 1 -> 2 -> 3 -> 4 -> STRIP.
-//       - Encoder turn  : set that target's brightness (MIDI notes/CC also set bulbs).
-//         The STRIP target sets the NeoPixel indicator brightness (applies to all modes).
+//   * MANUAL (strip = warm yellow; no clock indicators shown here)
+//       - Encoder press : cycle ALL -> 1 -> 2 -> 3 -> 4 -> STRIP -> TEMPO -> SUBDIV.
+//       - Encoder turn  : set the target's brightness (MIDI notes/CC also set bulbs).
+//         STRIP  = NeoPixel indicator brightness (applies to all modes).
+//         TEMPO  = toggle the tempo/clock indicator on/off.
+//         SUBDIV = toggle the subdivision indicator on/off.
 //       - Strip: ALL = all pixels, Light N = the Nth pixel. Turning briefly shows a
 //         brightness bar, then reverts to the pixel-number display.
 //
@@ -17,7 +19,8 @@
 //         press to enter, press again to exit back to the menu.
 //       - In an animation: encoder sets its parameter (shown on the strip). MIDI notes/CC
 //         are ignored. If a MIDI clock is present the animation beat-locks and the encoder
-//         picks the subdivision (1 bar / 1/2 / 1/4 / 1/8 / 1/16).
+//         picks the subdivision (1 bar / 1/2 / 1/4 / 1/8 / 1/16). The right two pixels show
+//         the tempo (blue=no clock / purple=beat) and the subdivision (orange).
 //       - Animations: comet, larson, sine sweep, breathe, twinkle, build, alternate, strobe.
 // ----------------------------------------------------------------------------------
 #include <MIDI.h>
@@ -93,11 +96,13 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 // -------------------------------- NEOPIXEL SETUP ----------------------------------
 const byte NUM_PIXELS = 8;
 Adafruit_NeoPixel ledStrip = Adafruit_NeoPixel(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
-uint32_t COLOR_WARM;       // MANUAL mode color  (set in setup once ledStrip exists)
-uint32_t COLOR_RED;        // ANIMATION mode color
-uint32_t COLOR_CLOCK_ON;   // clock-beat flash (far-right pixel)
-uint32_t COLOR_CLOCK_DIM;  // clock present, between beats
-const byte CLOCK_PIXEL = NUM_PIXELS - 1;   // logical pixel used as the clock indicator
+uint32_t COLOR_WARM;            // MANUAL mode color  (set in setup once ledStrip exists)
+uint32_t COLOR_RED;             // ANIMATION mode color
+uint32_t COLOR_TEMPO_BLUE;      // tempo light, no clock (steady)
+uint32_t COLOR_TEMPO_PURPLE;    // tempo light, clock present (flashes on the beat)
+uint32_t COLOR_SUBDIV_ORANGE;   // subdivision light (clock present, flashes per subdivision)
+const byte TEMPO_PIXEL  = NUM_PIXELS - 1;   // far-right: tempo / clock indicator
+const byte SUBDIV_PIXEL = NUM_PIXELS - 2;   // second from right: subdivision indicator
 
 // ---------------------------------- ANIMATIONS ------------------------------------
 enum Anim {
@@ -111,13 +116,19 @@ Mode gMode = MODE_MANUAL;
 
 bool gStripDirty = true;
 
-// MANUAL: target 0 = ALL, 1..4 = single light, then STRIP_TARGET = NeoPixel brightness.
-const byte STRIP_TARGET = NUM_LIGHTS + 1;   // = 5
-const byte NUM_MANUAL_TARGETS = NUM_LIGHTS + 2;
+// MANUAL targets, cycled by the encoder button:
+//   0 = ALL, 1..4 = single light, STRIP = NeoPixel brightness,
+//   TEMPO_LIGHT / SUBDIV_LIGHT = toggle the clock indicators on/off.
+const byte STRIP_TARGET       = NUM_LIGHTS + 1;   // = 5
+const byte TEMPO_LIGHT_TARGET = NUM_LIGHTS + 2;   // = 6
+const byte SUBDIV_LIGHT_TARGET = NUM_LIGHTS + 3;  // = 7
+const byte NUM_MANUAL_TARGETS = NUM_LIGHTS + 4;   // = 8
 byte gSelected = 0;
 bool gManualBrightActive = false;
 unsigned long gManualBrightUntil = 0;
 byte gStripBrightness = STRIP_BRIGHTNESS_DEFAULT;   // NeoPixel brightness, applies to all modes
+bool gTempoLightOn = true;     // show the tempo / clock indicator (far-right pixel)
+bool gSubdivLightOn = true;    // show the subdivision indicator (second from right)
 
 // Encoder button.
 bool gButtonLast = false;
@@ -166,9 +177,11 @@ byte gClockCount = 0;
 unsigned long gBeatMs = 500;       // measured beat interval (default 120 BPM)
 unsigned long gLastBeatAt = 0;
 unsigned long gLastClockMs = 0;
-unsigned long gBeatPulseAt = 0;    // time of the last beat (drives the indicator flash)
+unsigned long gBeatPulseAt = 0;    // time of the last beat (drives the tempo flash)
+unsigned long gUnitPulseAt = 0;    // time of the last animation unit (drives the subdiv flash)
 bool gPrevClockActive = false;
-bool gClockBlinkOn = false;
+bool gTempoBlinkOn = false;
+bool gSubdivBlinkOn = false;
 
 // ----------------------------------------------------------------------------------
 // >x< SETUP >x<
@@ -199,8 +212,9 @@ void setup() {
   ledStrip.setBrightness(gStripBrightness);
   COLOR_WARM = ledStrip.Color(255, 130, 15);
   COLOR_RED  = ledStrip.Color(255, 0, 0);
-  COLOR_CLOCK_ON  = ledStrip.Color(160, 0, 255);   // purple
-  COLOR_CLOCK_DIM = ledStrip.Color(25, 0, 40);      // dim purple
+  COLOR_TEMPO_BLUE    = ledStrip.Color(0, 0, 255);     // no clock
+  COLOR_TEMPO_PURPLE  = ledStrip.Color(160, 0, 255);   // clock present
+  COLOR_SUBDIV_ORANGE = ledStrip.Color(255, 90, 0);
   clearStrip();
 
   DimmableLight::setSyncPin(DIM_SYNC_PIN);
@@ -230,14 +244,17 @@ void loop() {
     gStripDirty = true;
   }
 
-  // Clock indicator: redraw when the clock appears/disappears or the beat flash toggles.
+  // Animation-mode indicators: redraw when the clock appears/disappears or a flash toggles.
   bool ca = clockActive();
-  bool blink = ca && (millis() - gBeatPulseAt < CLOCK_BLINK_MS);
-  if (ca != gPrevClockActive || blink != gClockBlinkOn) {
+  bool tBlink = ca && (millis() - gBeatPulseAt < CLOCK_BLINK_MS);
+  bool sBlink = ca && (millis() - gUnitPulseAt < CLOCK_BLINK_MS);
+  if (gMode == MODE_ANIM && gAnimRunning &&
+      (ca != gPrevClockActive || tBlink != gTempoBlinkOn || sBlink != gSubdivBlinkOn)) {
     gStripDirty = true;
   }
   gPrevClockActive = ca;
-  gClockBlinkOn = blink;
+  gTempoBlinkOn = tBlink;
+  gSubdivBlinkOn = sBlink;
 
   if (gMode == MODE_ANIM && gAnimRunning) {
     updateAnim();
@@ -299,6 +316,12 @@ void handleEncoder() {
     if (gSelected == STRIP_TARGET) {            // set the NeoPixel indicator brightness
       gStripBrightness = constrain(gStripBrightness + delta, STRIP_BRIGHTNESS_MIN, 255);
       ledStrip.setBrightness(gStripBrightness);
+      gStripDirty = true;
+    } else if (gSelected == TEMPO_LIGHT_TARGET) {   // toggle the tempo indicator
+      gTempoLightOn = right;                        // right = on, left = off
+      gStripDirty = true;
+    } else if (gSelected == SUBDIV_LIGHT_TARGET) {  // toggle the subdivision indicator
+      gSubdivLightOn = right;
       gStripDirty = true;
     } else {
       if (gSelected == 0) {
@@ -436,10 +459,11 @@ void updateAnim() {
     unsigned long now = millis();
     gPhase += TWO_PI * (float)(now - gLastRender) / (float)unit;
     gLastRender = now;
-    while (gPhase > TWO_PI) gPhase -= TWO_PI;
+    while (gPhase > TWO_PI) { gPhase -= TWO_PI; gUnitPulseAt = now; }   // one pulse per cycle
     renderContinuous(a);
   } else if (millis() - gStepAt >= unit) {
     gStepAt = millis();
+    gUnitPulseAt = millis();                                           // one pulse per step
     renderStep(a);
   }
 }
@@ -498,58 +522,83 @@ void renderContinuous(byte a) {
 // ----------------------------------------------------------------------------------
 // NEOPIXEL STRIP
 // ----------------------------------------------------------------------------------
-void clearStrip() {
+// Logical pixel 0 is the far-left LED. The strip's data-in end is physically on the
+// right, so map logical -> physical in reverse. The buffer helpers don't show(); the
+// indicator pixels are at most NUM_PIXELS-2 from the left, so drawStrip() composites
+// the content and then overlays the indicators with a single show().
+void setLogicalPixel(byte index, uint32_t color) {
+  ledStrip.setPixelColor(NUM_PIXELS - 1 - index, color);
+}
+
+void clearBuffer() {
   for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, 0);
+}
+
+void clearStrip() {
+  clearBuffer();
   ledStrip.show();
 }
 
-// Logical pixel 0 is the far-left LED. The strip's data-in end is physically on the
-// right, so map logical -> physical in reverse here. These only fill the buffer;
-// drawStrip() applies the clock overlay and calls show() once.
 void fillPixels(uint32_t color, byte litCount) {
   for (byte i = 0; i < NUM_PIXELS; i++)
     ledStrip.setPixelColor(i, i >= (NUM_PIXELS - litCount) ? color : 0);
 }
 
 void lightOnePixel(byte index, uint32_t color) {
-  byte phys = NUM_PIXELS - 1 - index;
-  for (byte i = 0; i < NUM_PIXELS; i++) ledStrip.setPixelColor(i, i == phys ? color : 0);
+  clearBuffer();
+  setLogicalPixel(index, color);
+}
+
+void drawManualContent() {
+  if (gSelected == STRIP_TARGET) {                   // strip brightness bar (dims live)
+    fillPixels(COLOR_WARM, map(gStripBrightness, 0, 255, 1, NUM_PIXELS));
+  } else if (gSelected == TEMPO_LIGHT_TARGET) {      // tempo-light on/off preview
+    if (gTempoLightOn) lightOnePixel(TEMPO_PIXEL, COLOR_TEMPO_BLUE); else clearBuffer();
+  } else if (gSelected == SUBDIV_LIGHT_TARGET) {     // subdivision-light on/off preview
+    if (gSubdivLightOn) lightOnePixel(SUBDIV_PIXEL, COLOR_SUBDIV_ORANGE); else clearBuffer();
+  } else if (gManualBrightActive) {                  // bulb brightness bar
+    byte b;
+    if (gSelected == 0) {
+      int sum = 0;
+      for (byte i = 0; i < NUM_LIGHTS; i++) sum += gBrightness[i];
+      b = sum / NUM_LIGHTS;
+    } else {
+      b = gBrightness[gSelected - 1];
+    }
+    fillPixels(COLOR_WARM, map(b, 0, 255, 0, NUM_PIXELS));
+  } else if (gSelected == 0) {                       // ALL -> every pixel
+    fillPixels(COLOR_WARM, NUM_PIXELS);
+  } else {                                           // Light N -> the Nth pixel
+    lightOnePixel(gSelected - 1, COLOR_WARM);
+  }
+}
+
+// Overlay the clock indicators on the right two pixels (ANIMATION, running only).
+void drawAnimIndicators() {
+  if (gTempoLightOn) {
+    if (!clockActive()) {
+      setLogicalPixel(TEMPO_PIXEL, COLOR_TEMPO_BLUE);                 // steady blue: no clock
+    } else if (gTempoBlinkOn) {
+      setLogicalPixel(TEMPO_PIXEL, COLOR_TEMPO_PURPLE);              // purple flash on the beat
+    }
+  }
+  if (gSubdivLightOn && clockActive() && gSubdivBlinkOn) {
+    setLogicalPixel(SUBDIV_PIXEL, COLOR_SUBDIV_ORANGE);              // orange flash per subdivision
+  }
 }
 
 void drawStrip() {
-  if (gMode == MODE_MANUAL) {
-    if (gSelected == STRIP_TARGET) {                 // strip brightness: bar (also dims live)
-      fillPixels(COLOR_WARM, map(gStripBrightness, 0, 255, 1, NUM_PIXELS));
-    } else if (gManualBrightActive) {                // bulb brightness bar (warm yellow)
-      byte b;
-      if (gSelected == 0) {
-        int sum = 0;
-        for (byte i = 0; i < NUM_LIGHTS; i++) sum += gBrightness[i];
-        b = sum / NUM_LIGHTS;
-      } else {
-        b = gBrightness[gSelected - 1];
-      }
-      fillPixels(COLOR_WARM, map(b, 0, 255, 0, NUM_PIXELS));
-    } else if (gSelected == 0) {                     // ALL -> every pixel
-      fillPixels(COLOR_WARM, NUM_PIXELS);
-    } else {                                         // Light N -> the Nth pixel
-      lightOnePixel(gSelected - 1, COLOR_WARM);
-    }
-  } else {                                           // ANIMATION (red)
-    if (!gAnimRunning) {
-      lightOnePixel(gAnimSel, COLOR_RED);            // selection cursor
-    } else if (clockActive()) {
-      fillPixels(COLOR_RED, gAnimSubdiv[gAnimSel] + 1);                 // subdivision 1..5
-    } else {
-      fillPixels(COLOR_RED, map(gAnimSpeed[gAnimSel], 0, 255, 1, NUM_PIXELS));  // speed
-    }
-  }
-
-  // Clock indicator overlay (far-right pixel): dim green when a clock is present,
-  // bright green flash on each beat. Off entirely when no clock is being received.
-  if (clockActive()) {
-    byte phys = NUM_PIXELS - 1 - CLOCK_PIXEL;
-    ledStrip.setPixelColor(phys, gClockBlinkOn ? COLOR_CLOCK_ON : COLOR_CLOCK_DIM);
+  if (gMode == MODE_MANUAL) {                         // no MIDI indicators in MANUAL
+    drawManualContent();
+  } else if (!gAnimRunning) {                         // ANIMATION selection menu
+    lightOnePixel(gAnimSel, COLOR_RED);
+  } else {                                            // ANIMATION running
+    byte cap = NUM_PIXELS - 2;                        // leave the right two pixels for indicators
+    byte n = clockActive() ? (gAnimSubdiv[gAnimSel] + 1)
+                           : map(gAnimSpeed[gAnimSel], 0, 255, 1, cap);
+    if (n > cap) n = cap;
+    fillPixels(COLOR_RED, n);
+    drawAnimIndicators();
   }
   ledStrip.show();
 }
