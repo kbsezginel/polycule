@@ -81,8 +81,8 @@ clock, the encoder sets a free speed of **20–250 BPM** (shown as a red bar). M
 are ignored in ANIMATION mode.
 
 **Clock indicators** (right two pixels, while an animation is running):
-- **Tempo** (far-right): **blue** steady when no clock; **purple** flashing on each beat
-  when a clock is present.
+- **Tempo** (far-right): flashes each unit — **blue** at the selected free-run speed (BPM),
+  or **purple** on each beat when a MIDI clock is present.
 - **Subdivision** (second from right): **orange**, flashing at the selected subdivision
   rate — only when a clock is present.
 

@@ -249,8 +249,10 @@ void loop() {
   }
 
   // Animation-mode indicators: redraw when the clock appears/disappears or a flash toggles.
+  // Tempo light blinks on the beat when clocked, else at the free-run unit (selected BPM).
   bool ca = clockActive();
-  bool tBlink = ca && (millis() - gBeatPulseAt < CLOCK_BLINK_MS);
+  unsigned long tempoPulseAt = ca ? gBeatPulseAt : gUnitPulseAt;
+  bool tBlink = (millis() - tempoPulseAt < CLOCK_BLINK_MS);
   bool sBlink = ca && (millis() - gUnitPulseAt < CLOCK_BLINK_MS);
   if (gMode == MODE_ANIM && gAnimRunning &&
       (ca != gPrevClockActive || tBlink != gTempoBlinkOn || sBlink != gSubdivBlinkOn)) {
@@ -595,12 +597,9 @@ void drawManualContent() {
 
 // Overlay the clock indicators on the right two pixels (ANIMATION, running only).
 void drawAnimIndicators() {
-  if (gTempoLightOn) {
-    if (!clockActive()) {
-      setLogicalPixel(TEMPO_PIXEL, COLOR_TEMPO_BLUE);                 // steady blue: no clock
-    } else if (gTempoBlinkOn) {
-      setLogicalPixel(TEMPO_PIXEL, COLOR_TEMPO_PURPLE);              // purple flash on the beat
-    }
+  // Tempo light flashes each unit: blue at the free-run speed, purple on the MIDI beat.
+  if (gTempoLightOn && gTempoBlinkOn) {
+    setLogicalPixel(TEMPO_PIXEL, clockActive() ? COLOR_TEMPO_PURPLE : COLOR_TEMPO_BLUE);
   }
   if (gSubdivLightOn && clockActive() && gSubdivBlinkOn) {
     setLogicalPixel(SUBDIV_PIXEL, COLOR_SUBDIV_ORANGE);              // orange flash per subdivision
