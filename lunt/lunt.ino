@@ -498,15 +498,15 @@ void renderStep(byte a) {
   switch (a) {
     case ANIM_COMET:
       decayAll();
+      setLight(gAnimPos, 255);                  // light current, then advance
       gAnimPos = (gAnimPos + 1) % NUM_LIGHTS;
-      setLight(gAnimPos, 255);
       break;
     case ANIM_LARSON:
       decayAll();
+      setLight(gAnimPos, 255);                  // light current, then advance + bounce
       gAnimPos += gAnimDir;
       if (gAnimPos >= NUM_LIGHTS - 1) { gAnimPos = NUM_LIGHTS - 1; gAnimDir = -1; }
       else if (gAnimPos <= 0)        { gAnimPos = 0;              gAnimDir =  1; }
-      setLight(gAnimPos, 255);
       break;
     case ANIM_TWINKLE:
       decayAll();
