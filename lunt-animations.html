@@ -179,19 +179,21 @@
 const NUM_LIGHTS = 4;
 const TWO_PI = Math.PI * 2;
 
-const ANIM = { COMET:0, LARSON:1, SINE:2, BREATHE:3, TWINKLE:4, BUILD:5, WAVES:6, PULSE68:7 };
+const ANIM = { COMET:0, LARSON:1, SINE:2, DRIFT:3, TWINKLE:4, BUILD:5, WAVES:6, PULSE68:7 };
 // defaultBpm mirrors the firmware's per-animation gAnimSpeed default (most ≈135 BPM).
 const ANIMS = [
   { id: ANIM.COMET,   name: "Comet",        defaultBpm: 135, blurb: "A bright spot sweeps 1→2→3→4 with a fading tail." },
   { id: ANIM.LARSON,  name: "Larson",       defaultBpm: 135, blurb: "A single bright bulb bounces 1→4→1 (Knight Rider)." },
   { id: ANIM.SINE,    name: "Sine sweep",   defaultBpm: 135, blurb: "A phase-offset sine wave rolls smoothly across the bulbs." },
-  { id: ANIM.BREATHE, name: "Breathe",      defaultBpm: 135, blurb: "All four fade up and down together." },
+  { id: ANIM.DRIFT,   name: "Drift",        defaultBpm: 30,  blurb: "Each bulb is its own oscillator at a slightly different rate, wandering in and out of phase independently — calming, never a marching wave. Defaults to ~30 BPM." },
   { id: ANIM.TWINKLE, name: "Twinkle",      defaultBpm: 135, blurb: "Random bulbs sparkle bright then fade." },
   { id: ANIM.BUILD,   name: "Build & drop", defaultBpm: 135, blurb: "Fills 1→12→123→1234, blackout, repeat." },
   { id: ANIM.WAVES,   name: "Waves",        defaultBpm: 40,  blurb: "A slow, smooth sine swell rolling in and out across the bulbs — calming, never fully dark. Defaults to ~40 BPM." },
   { id: ANIM.PULSE68, name: "6/8 Pulse",    defaultBpm: 120, blurb: "6/8 feel: bulbs 1 & 2 flash-and-fade strong→medium→weak on beats 1–3, then 3 & 4 on beats 4–6. Defaults to 120 BPM." },
 ];
-function isContinuous(a){ return a === ANIM.SINE || a === ANIM.BREATHE || a === ANIM.WAVES || a === ANIM.PULSE68; }
+function isContinuous(a){ return a === ANIM.SINE || a === ANIM.DRIFT || a === ANIM.WAVES || a === ANIM.PULSE68; }
+// Drift: per-bulb oscillation rate at full spread (bulb 0 stays at the base rate).
+const DRIFT_MULT = [1.00, 1.18, 0.86, 1.34];
 
 // ===================== tunable animation parameters ===========================
 // Each entry mirrors a firmware constant. The render code reads `.value` live, so
@@ -210,11 +212,15 @@ const P = {
     note: v => `${v}° between adjacent bulbs (0 = all in phase, 90° = a wave rolling across the row)` },
   waveFloor: { label: "Min glow  (WAVE_FLOOR)", min: 0, max: 200, step: 5, value: 40, int: true,
     note: v => `bulbs swell between ${v} and 255 (higher = gentler, never fully dark)` },
+  driftSpread:{ label: "Phase drift  (DRIFT_SPREAD)", min: 0, max: 1, step: 0.05, value: 0.5,
+    note: v => v == 0 ? `0 = all bulbs locked together (a plain breathe)`
+                      : `bulbs run at ${(100*(1-v+v*Math.min(...DRIFT_MULT))).toFixed(0)}–${(100*(1-v+v*Math.max(...DRIFT_MULT))).toFixed(0)}% of the base rate → drift in and out of phase` },
 };
 // Which params each animation exposes (others have no tunable constants).
 const PARAMS = {
   [ANIM.COMET]:   ["tailShift"],
   [ANIM.LARSON]:  ["tailShift"],
+  [ANIM.DRIFT]:   ["driftSpread"],
   [ANIM.TWINKLE]: ["tailShift"],
   [ANIM.WAVES]:   ["waveSpread", "waveFloor"],
   [ANIM.PULSE68]: ["p68peak0", "p68peak1", "p68peak2", "p68decay"],
@@ -223,6 +229,7 @@ const PARAMS = {
 const SNIPPET = {
   [ANIM.COMET]:   () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
   [ANIM.LARSON]:  () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
+  [ANIM.DRIFT]:   () => `const float DRIFT_SPREAD = ${(+P.driftSpread.value).toFixed(2)}f;`,
   [ANIM.TWINKLE]: () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
   [ANIM.WAVES]:   () =>
     `const float WAVE_SPREAD = ${(P.waveSpread.value * Math.PI / 180).toFixed(4)}f;   // ${P.waveSpread.value} deg between adjacent bulbs\n` +
@@ -237,6 +244,7 @@ const fw = {
   bright: [0,0,0,0],   // raw firmware brightness, 0..255 (== gBrightness[])
   stepAt: 0, lastRender: 0, unitPulseAt: 0,
   phase: 0, pos: 0, dir: 1, buildStep: 0, meterBeat: 0,
+  driftPhase: [0,0,0,0],   // drift: per-bulb independent phase
 };
 let anim = ANIM.COMET;
 let bpm = 135;
@@ -272,8 +280,9 @@ function renderContinuous(a){
       const s = Math.sin(fw.phase + i * (TWO_PI / NUM_LIGHTS));
       setLight(i, (s * 0.5 + 0.5) * 255);
     }
-  } else if (a === ANIM.BREATHE){
-    setAllLights((Math.sin(fw.phase) * 0.5 + 0.5) * 255);
+  } else if (a === ANIM.DRIFT){ // each bulb on its own phase (advanced per-rate in updateAnim)
+    for (let i=0;i<NUM_LIGHTS;i++)
+      setLight(i, (Math.sin(fw.driftPhase[i]) * 0.5 + 0.5) * 255);
   } else if (a === ANIM.WAVES){ // smooth sine swell, tunable phase spread + a minimum glow
     const spread = P.waveSpread.value * Math.PI / 180;
     const floor  = P.waveFloor.value;
@@ -297,6 +306,7 @@ function renderContinuous(a){
 function resetAnimState(now){
   fw.phase = 0; fw.lastRender = now; fw.stepAt = now; fw.unitPulseAt = now;
   fw.pos = 0; fw.dir = 1; fw.buildStep = 0; fw.meterBeat = 0;
+  fw.driftPhase = [0,0,0,0];   // drift bulbs start in sync
   setAllLights(0);
   if (!isContinuous(anim)) renderStep(anim);   // show the first frame now
 }
@@ -304,11 +314,19 @@ function resetAnimState(now){
 function updateAnim(now){
   const unit = animUnitMs();
   if (isContinuous(anim)){
-    fw.phase += TWO_PI * (now - fw.lastRender) / unit;
+    const inc = TWO_PI * (now - fw.lastRender) / unit;   // phase advanced this frame
     fw.lastRender = now;
+    fw.phase += inc;
     while (fw.phase > TWO_PI){
       fw.phase -= TWO_PI; fw.unitPulseAt = now;
       if (anim === ANIM.PULSE68) fw.meterBeat = (fw.meterBeat + 1) % 6;   // advance the 6/8 beat
+    }
+    if (anim === ANIM.DRIFT){                             // each bulb advances at its own rate
+      const sp = P.driftSpread.value;
+      for (let i=0;i<NUM_LIGHTS;i++){
+        fw.driftPhase[i] += inc * (1 + sp * (DRIFT_MULT[i] - 1));
+        while (fw.driftPhase[i] > TWO_PI) fw.driftPhase[i] -= TWO_PI;
+      }
     }
     renderContinuous(anim);
   } else if (now - fw.stepAt >= unit){

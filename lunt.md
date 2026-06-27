@@ -73,11 +73,16 @@ the [live animation preview](lunt-animations.html).
 | 1 | Comet | A bright spot sweeps 1→2→3→4 with a fading tail |
 | 2 | Larson | A single bright bulb bounces 1→4→1 (Knight Rider) |
 | 3 | Sine sweep | A phase-offset sine wave rolls smoothly across the bulbs |
-| 4 | Breathe | All four fade up and down together |
+| 4 | Drift | Each bulb is its own slow oscillator, wandering in and out of phase independently (0 spread = all breathe together) |
 | 5 | Twinkle | Random bulbs sparkle bright then fade |
 | 6 | Build & drop | Fills 1→12→123→1234, blackout, repeat |
 | 7 | Waves | A slow, smooth sine swell rolling in and out across the bulbs; never goes fully dark |
 | 8 | 6/8 Pulse | For a 6/8 feel: bulbs 1 & 2 flash-and-fade on beats 1–3 (strong→medium→weak), then 3 & 4 on beats 4–6, repeating |
+
+**Drift** gives each bulb its own oscillation rate, so they wander in and out of phase
+independently — calming, organic, never a marching wave. Its one parameter (`DRIFT_SPREAD`)
+sets how far the rates spread: **0 = all in sync** (a plain breathe), higher = more
+independent. It defaults to a slow **~30 BPM**.
 
 **Waves** is a calming, continuous sine. Its phase spread (the offset between adjacent bulbs)
 sets the feel — 0° is all bulbs in phase, ~90° is a wave rolling across the row — and a

@@ -22,7 +22,7 @@
 //         menu. MIDI notes/CC are ignored. If a MIDI clock is present the animation
 //         beat-locks and the encoder picks the subdivision (1 bar / 1/2 / 1/4 / 1/8 / 1/16).
 //         The right two pixels show the tempo (blue=no clock / purple=beat) and subdivision.
-//       - Animations: comet, larson, sine sweep, breathe, twinkle, build, waves, 6/8 pulse.
+//       - Animations: comet, larson, sine sweep, drift, twinkle, build, waves, 6/8 pulse.
 // ----------------------------------------------------------------------------------
 #include <MIDI.h>
 #include <Adafruit_NeoPixel.h>
@@ -60,6 +60,14 @@ const byte TAIL_SHIFT = 2;                       // comet/larson/twinkle fade: b
 const float WAVE_SPREAD = 1.5708f;                 // ~90 deg between adjacent bulbs (0 = in phase)
 const byte  WAVE_FLOOR  = 40;                      // 0-255 minimum brightness (higher = gentler swell)
 const int   WAVES_SPEED = 23;                      // gAnimSpeed default -> ~40 BPM (slow / calming)
+
+// Drift animation. Each bulb is its own oscillator running at a slightly different rate,
+// so they wander in and out of phase independently (no travelling-wave motion). Per-bulb
+// rate = 1 + DRIFT_SPREAD * (DRIFT_MULT[i] - 1); DRIFT_SPREAD 0 = all in sync (a plain
+// breathe), 1 = fully independent. Bulb 0 stays at the base rate (the encoder's BPM).
+const float DRIFT_MULT[4] = {1.00f, 1.18f, 0.86f, 1.34f};          // per-bulb rate at full spread
+const float DRIFT_SPREAD = 0.5f;                   // 0 = synced, 1 = fully independent
+const int   DRIFT_SPEED  = 12;                     // gAnimSpeed default -> ~30 BPM (slow / calming)
 
 // 6/8 pulse animation. Each beat the active pair flashes at the onset and fades out;
 // the peak steps down across the three beats of each group (strong, medium, weak).
@@ -121,7 +129,7 @@ const byte SUBDIV_PIXEL = NUM_PIXELS - 2;   // second from right: subdivision in
 
 // ---------------------------------- ANIMATIONS ------------------------------------
 enum Anim {
-  ANIM_COMET, ANIM_LARSON, ANIM_SINE, ANIM_BREATHE,
+  ANIM_COMET, ANIM_LARSON, ANIM_SINE, ANIM_DRIFT,
   ANIM_TWINKLE, ANIM_BUILD, ANIM_WAVES, ANIM_PULSE68, NUM_ANIMS
 };
 
@@ -182,7 +190,8 @@ byte gAnimSubdiv[NUM_ANIMS];       // beat-lock subdivision per animation, 0..NU
 // Animation render state.
 unsigned long gStepAt = 0;         // last step time (stepwise anims)
 unsigned long gLastRender = 0;     // last render time (continuous anims)
-float gPhase = 0;                  // sine / breathe phase
+float gPhase = 0;                  // sine / waves / pulse phase
+float gDriftPhase[4] = {0, 0, 0, 0};  // drift: per-bulb independent phase
 int  gAnimPos = 0;                 // comet / larson position
 int  gAnimDir = 1;                 // larson direction
 byte gBuildStep = 0;
@@ -223,6 +232,7 @@ void setup() {
     gAnimSpeed[i] = 128;
     gAnimSubdiv[i] = 2;            // default 1/4 note (one step/cycle per beat)
   }
+  gAnimSpeed[ANIM_DRIFT]   = DRIFT_SPEED;     // drift defaults to a slow ~30 BPM
   gAnimSpeed[ANIM_WAVES]   = WAVES_SPEED;     // waves default to a slow ~40 BPM
   gAnimSpeed[ANIM_PULSE68] = PULSE68_SPEED;   // 6/8 pulse defaults to ~120 BPM
 
@@ -461,7 +471,7 @@ void handleControlChange(byte channel, byte number, byte value) {
 // ANIMATIONS
 // ----------------------------------------------------------------------------------
 bool isContinuous(byte a) {
-  return a == ANIM_SINE || a == ANIM_BREATHE || a == ANIM_WAVES || a == ANIM_PULSE68;
+  return a == ANIM_SINE || a == ANIM_DRIFT || a == ANIM_WAVES || a == ANIM_PULSE68;
 }
 
 void resetAnimState() {
@@ -473,6 +483,7 @@ void resetAnimState() {
   gAnimDir = 1;
   gBuildStep = 0;
   gMeterBeat = 0;
+  for (byte i = 0; i < NUM_LIGHTS; i++) gDriftPhase[i] = 0;   // drift bulbs start in sync
   setAllLights(0);
   if (!isContinuous(gAnimSel)) renderStep(gAnimSel);   // show the first frame now
 }
@@ -492,12 +503,19 @@ void updateAnim() {
   byte a = gAnimSel;
   if (isContinuous(a)) {
     unsigned long now = millis();
-    gPhase += TWO_PI * (float)(now - gLastRender) / (float)unit;
+    float inc = TWO_PI * (float)(now - gLastRender) / (float)unit;      // phase advanced this frame
     gLastRender = now;
+    gPhase += inc;
     while (gPhase > TWO_PI) {                                           // one pulse per cycle
       gPhase -= TWO_PI;
       gUnitPulseAt = now;
       if (a == ANIM_PULSE68) gMeterBeat = (gMeterBeat + 1) % 6;         // advance the 6/8 beat
+    }
+    if (a == ANIM_DRIFT) {                                              // each bulb at its own rate
+      for (byte i = 0; i < NUM_LIGHTS; i++) {
+        gDriftPhase[i] += inc * (1.0f + DRIFT_SPREAD * (DRIFT_MULT[i] - 1.0f));
+        while (gDriftPhase[i] > TWO_PI) gDriftPhase[i] -= TWO_PI;
+      }
     }
     renderContinuous(a);
   } else if (millis() - gStepAt >= unit) {
@@ -542,8 +560,9 @@ void renderContinuous(byte a) {
       float s = sin(gPhase + i * (TWO_PI / NUM_LIGHTS));
       setLight(i, (int)((s * 0.5f + 0.5f) * 255));
     }
-  } else if (a == ANIM_BREATHE) {
-    setAllLights((int)((sin(gPhase) * 0.5f + 0.5f) * 255));
+  } else if (a == ANIM_DRIFT) {  // each bulb on its own phase (advanced per-rate in updateAnim)
+    for (byte i = 0; i < NUM_LIGHTS; i++)
+      setLight(i, (int)((sin(gDriftPhase[i]) * 0.5f + 0.5f) * 255));
   } else if (a == ANIM_WAVES) {  // smooth sine swell, tunable phase spread + a minimum glow
     for (byte i = 0; i < NUM_LIGHTS; i++) {
       float s = 0.5f + 0.5f * sin(gPhase + i * WAVE_SPREAD);
