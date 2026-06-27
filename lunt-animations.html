@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lunt &mdash; Light Animation Preview</title>
+<style>
+  :root {
+    --bg0: #0b0a09;
+    --bg1: #15110d;
+    --panel: #1b1714;
+    --line: #2c2620;
+    --text: #e9ddcb;
+    --muted: #9b8d79;
+    --accent: #ff8c2b;
+    --accent-dim: #5a3a18;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: radial-gradient(120% 90% at 50% 0%, var(--bg1), var(--bg0));
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100%;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 22px 18px 48px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; letter-spacing: .5px; margin: 0; font-weight: 600; }
+  h1 .lunt { color: var(--accent); }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .stage {
+    margin: 18px 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: linear-gradient(180deg, #100d0a, #060504);
+    overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 10px 40px rgba(0,0,0,.5);
+  }
+  canvas { display: block; width: 100%; height: auto; }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .anims { display: flex; flex-wrap: wrap; gap: 8px; }
+  button.anim, .btn {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+    padding: 8px 13px;
+    border-radius: 9px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .12s, background .12s, color .12s;
+  }
+  button.anim:hover, .btn:hover { border-color: var(--accent-dim); }
+  button.anim.active {
+    border-color: var(--accent);
+    background: linear-gradient(180deg, #2a1c10, #1d130b);
+    color: #ffd9a8;
+    box-shadow: 0 0 0 1px rgba(255,140,43,.25), 0 0 18px rgba(255,140,43,.12);
+  }
+  button.anim .num { color: var(--muted); font-size: 11px; margin-right: 6px; }
+  button.anim.active .num { color: var(--accent); }
+
+  .panel {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 11px;
+    padding: 13px 15px;
+  }
+  label.fld { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  input[type="range"] { width: 220px; accent-color: var(--accent); }
+  .val { color: var(--text); font-variant-numeric: tabular-nums; min-width: 78px; }
+  .chk { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+  .chk input { accent-color: var(--accent); }
+  .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+  .desc { color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .desc b { color: var(--text); font-weight: 600; }
+
+  .param-head { color: var(--text); font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .param-row { display: flex; align-items: center; gap: 12px; margin: 7px 0; }
+  .param-name { color: var(--muted); font-size: 13px; min-width: 230px; }
+  .param-row input[type="range"] { width: 200px; }
+  .param-row .val { min-width: 48px; }
+  .param-note { color: var(--muted); font-size: 11.5px; font-family: ui-monospace, monospace;
+    margin: -2px 0 8px 242px; opacity: .85; }
+  .muted-note { color: var(--muted); font-size: 13px; font-style: italic; }
+  .snippet-wrap { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+    position: relative; }
+  .snippet-label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  #paramSnippet { margin: 0; background: #100d0a; border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 70px 10px 12px; color: #ffd9a8; font-size: 12.5px; font-family: ui-monospace, monospace;
+    white-space: pre-wrap; overflow-x: auto; }
+  #copySnippet { position: absolute; top: 34px; right: 8px; padding: 4px 10px; font-size: 12px; }
+  kbd {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    background: #241e18; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 5px; color: var(--text);
+  }
+  .foot { margin-top: 18px; }
+  .foot > summary {
+    color: var(--muted); font-size: 12px; cursor: pointer; list-style: none;
+    display: inline-flex; align-items: center; gap: 6px; user-select: none;
+    padding: 2px 0; transition: color .12s;
+  }
+  .foot > summary:hover { color: var(--text); }
+  .foot > summary::-webkit-details-marker { display: none; }
+  .foot > summary::before { content: "▸"; font-size: 10px; transition: transform .12s; }
+  .foot[open] > summary::before { transform: rotate(90deg); }
+  .foot .foot-body { color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 8px; }
+  .foot code { background: #241e18; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="lunt">LUNT</span> &mdash; light animation preview</h1>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" width="1800" height="760"></canvas>
+  </div>
+
+  <div class="controls">
+    <div class="anims" id="anims"></div>
+
+    <div class="panel row" style="gap:18px;">
+      <button class="btn" id="play">⏸ Pause</button>
+      <button class="btn" id="resync">↻ Re-sync</button>
+      <div class="sep"></div>
+      <label class="fld">
+        Tempo
+        <input type="range" id="bpm" min="20" max="250" value="120" step="1">
+        <span class="val"><span id="bpmv">120</span> BPM</span>
+      </label>
+      <span class="val" style="color:var(--muted)">unit = <span id="unitms">500</span> ms</span>
+      <div class="sep"></div>
+      <label class="chk"><input type="checkbox" id="thermal" checked> incandescent thermal lag</label>
+      <label class="chk"><input type="checkbox" id="values"> show 0–255 values</label>
+    </div>
+
+    <div class="panel desc" id="desc"></div>
+
+    <div class="panel" id="paramPanel">
+      <div class="param-head">Animation parameters</div>
+      <div id="paramList"></div>
+      <div class="snippet-wrap" id="snippetWrap">
+        <div class="snippet-label">Paste into <code>lunt/lunt.ino</code>:</div>
+        <pre id="paramSnippet"></pre>
+        <button class="btn" id="copySnippet">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <details class="foot">
+    <summary>About this preview</summary>
+    <div class="foot-body">
+      Brightness is computed by a 1:1 JavaScript port of the firmware's <code>renderStep()</code> /
+      <code>renderContinuous()</code> and <code>animUnitMs()</code> (free-run, one unit = one beat at the set BPM).
+      The amber glow adds a small filament thermal lag so the bulbs behave
+      like real incandescents rather than snapping instantly &mdash; toggle it off to see the raw values.
+      The <b>Animation parameters</b> panel mirrors the firmware constants for the selected animation: drag to
+      tune, watch the bulbs update live, then copy the generated <code>lunt.ino</code> line. Some constants are
+      shared (one <code>TAIL_SHIFT</code> drives comet / larson / twinkle).
+      Shortcuts: <kbd>Space</kbd> play/pause &middot; <kbd>R</kbd> re-sync &middot; <kbd>1</kbd>–<kbd>8</kbd> pick animation.
+      To capture a GIF, screen-record the stage (e.g. with your OS recorder or <code>ffmpeg</code>).
+    </div>
+  </details>
+</div>
+
+<script>
+"use strict";
+
+// ===================== firmware constants (from lunt.ino) =====================
+const NUM_LIGHTS = 4;
+const TWO_PI = Math.PI * 2;
+
+const ANIM = { COMET:0, LARSON:1, SINE:2, BREATHE:3, TWINKLE:4, BUILD:5, ALT:6, PULSE68:7 };
+const ANIMS = [
+  { id: ANIM.COMET,   name: "Comet",        blurb: "A bright spot sweeps 1→2→3→4 with a fading tail." },
+  { id: ANIM.LARSON,  name: "Larson",       blurb: "A single bright bulb bounces 1→4→1 (Knight Rider)." },
+  { id: ANIM.SINE,    name: "Sine sweep",   blurb: "A phase-offset sine wave rolls smoothly across the bulbs." },
+  { id: ANIM.BREATHE, name: "Breathe",      blurb: "All four fade up and down together." },
+  { id: ANIM.TWINKLE, name: "Twinkle",      blurb: "Random bulbs sparkle bright then fade." },
+  { id: ANIM.BUILD,   name: "Build & drop", blurb: "Fills 1→12→123→1234, blackout, repeat." },
+  { id: ANIM.ALT,     name: "Alternate",    blurb: "1 & 3 ↔ 2 & 4 swap back and forth." },
+  { id: ANIM.PULSE68, name: "6/8 Pulse",    blurb: "6/8 feel: bulbs 1 & 2 flash-and-fade strong→medium→weak on beats 1–3, then 3 & 4 on beats 4–6. Defaults to 120 BPM." },
+];
+function isContinuous(a){ return a === ANIM.SINE || a === ANIM.BREATHE || a === ANIM.PULSE68; }
+
+// ===================== tunable animation parameters ===========================
+// Each entry mirrors a firmware constant. The render code reads `.value` live, so
+// dragging a slider updates the bulbs instantly. Tune here, then copy the firmware
+// snippet shown under the animation into lunt.ino. Some params are shared by several
+// animations (the firmware has one TAIL_SHIFT for comet / larson / twinkle).
+const P = {
+  tailShift: { label: "Tail fade  (TAIL_SHIFT)", min: 1, max: 4, step: 1, value: 2, int: true,
+    note: v => `b -= b >> ${v}  →  keeps ${(1 - 1/(1<<v)).toFixed(3)}× of each bulb per step (smaller = longer tail)` },
+  p68peak0:  { label: "Beat 1 peak  (PULSE68_PEAK[0])", min: 0, max: 1, step: 0.05, value: 1.0 },
+  p68peak1:  { label: "Beat 2 peak  (PULSE68_PEAK[1])", min: 0, max: 1, step: 0.05, value: 0.6 },
+  p68peak2:  { label: "Beat 3 peak  (PULSE68_PEAK[2])", min: 0, max: 1, step: 0.05, value: 0.3 },
+  p68decay:  { label: "Flash decay  (PULSE68_DECAY)", min: 0.5, max: 8, step: 0.1, value: 3.5,
+    note: v => `e^(−frac·${v.toFixed(1)})  (higher = snappier, fades out sooner within the beat)` },
+};
+// Which params each animation exposes (others have no tunable constants).
+const PARAMS = {
+  [ANIM.COMET]:   ["tailShift"],
+  [ANIM.LARSON]:  ["tailShift"],
+  [ANIM.TWINKLE]: ["tailShift"],
+  [ANIM.PULSE68]: ["p68peak0", "p68peak1", "p68peak2", "p68decay"],
+};
+// The exact lunt.ino line(s) to paste, built from the current values.
+const SNIPPET = {
+  [ANIM.COMET]:   () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
+  [ANIM.LARSON]:  () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
+  [ANIM.TWINKLE]: () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
+  [ANIM.PULSE68]: () =>
+    `const float PULSE68_PEAK[3] = {${P.p68peak0.value.toFixed(2)}f, ${P.p68peak1.value.toFixed(2)}f, ${P.p68peak2.value.toFixed(2)}f};\n` +
+    `const float PULSE68_DECAY   = ${P.p68decay.value.toFixed(1)}f;`,
+};
+
+// ===================== animation engine (ports lunt.ino) ======================
+const fw = {
+  bright: [0,0,0,0],   // raw firmware brightness, 0..255 (== gBrightness[])
+  stepAt: 0, lastRender: 0, unitPulseAt: 0,
+  phase: 0, pos: 0, dir: 1, buildStep: 0, altState: false, meterBeat: 0,
+};
+let anim = ANIM.COMET;
+let bpm = 120;
+
+function setLight(i, v){ fw.bright[i] = Math.max(0, Math.min(255, Math.round(v))); }
+function setAllLights(v){ for (let i=0;i<NUM_LIGHTS;i++) setLight(i, v); }
+function decayAll(){ const sh = P.tailShift.value; for (let i=0;i<NUM_LIGHTS;i++){ const b=fw.bright[i]; setLight(i, b - (b >> sh)); } }
+
+// animUnitMs() free-run path: one unit = one beat = 60000 / BPM ms.
+function animUnitMs(){ return 60000 / bpm; }
+
+function renderStep(a){
+  switch(a){
+    case ANIM.COMET:
+      decayAll(); setLight(fw.pos, 255); fw.pos = (fw.pos + 1) % NUM_LIGHTS; break;
+    case ANIM.LARSON:
+      decayAll(); setLight(fw.pos, 255); fw.pos += fw.dir;
+      if (fw.pos >= NUM_LIGHTS - 1){ fw.pos = NUM_LIGHTS - 1; fw.dir = -1; }
+      else if (fw.pos <= 0){ fw.pos = 0; fw.dir = 1; }
+      break;
+    case ANIM.TWINKLE:
+      decayAll(); setLight(Math.floor(Math.random()*NUM_LIGHTS), 255); break;
+    case ANIM.BUILD:
+      fw.buildStep = (fw.buildStep + 1) % (NUM_LIGHTS + 1);
+      for (let i=0;i<NUM_LIGHTS;i++) setLight(i, i < fw.buildStep ? 255 : 0);
+      break;
+    case ANIM.ALT:
+      fw.altState = !fw.altState;
+      setLight(0, fw.altState ? 255 : 0);
+      setLight(2, fw.altState ? 255 : 0);
+      setLight(1, fw.altState ? 0 : 255);
+      setLight(3, fw.altState ? 0 : 255);
+      break;
+  }
+}
+
+function renderContinuous(a){
+  if (a === ANIM.SINE){
+    for (let i=0;i<NUM_LIGHTS;i++){
+      const s = Math.sin(fw.phase + i * (TWO_PI / NUM_LIGHTS));
+      setLight(i, (s * 0.5 + 0.5) * 255);
+    }
+  } else if (a === ANIM.BREATHE){
+    setAllLights((Math.sin(fw.phase) * 0.5 + 0.5) * 255);
+  } else { // PULSE68 — 6/8 pulse: flash on each beat, fade out, peak steps down per group
+    const frac  = fw.phase / TWO_PI;                  // 0..1 through the current beat
+    const env   = Math.exp(-frac * P.p68decay.value); // flash at the onset, then fade
+    const peaks = [P.p68peak0.value, P.p68peak1.value, P.p68peak2.value];
+    const v     = peaks[fw.meterBeat % 3] * env * 255;
+    const firstGroup = (fw.meterBeat < 3);            // beats 0–2 = lights 1&2, 3–5 = lights 3&4
+    setLight(0, firstGroup ? v : 0);
+    setLight(1, firstGroup ? v : 0);
+    setLight(2, firstGroup ? 0 : v);
+    setLight(3, firstGroup ? 0 : v);
+  }
+}
+
+function resetAnimState(now){
+  fw.phase = 0; fw.lastRender = now; fw.stepAt = now; fw.unitPulseAt = now;
+  fw.pos = 0; fw.dir = 1; fw.buildStep = 0; fw.altState = false; fw.meterBeat = 0;
+  setAllLights(0);
+  if (!isContinuous(anim)) renderStep(anim);   // show the first frame now
+}
+
+function updateAnim(now){
+  const unit = animUnitMs();
+  if (isContinuous(anim)){
+    fw.phase += TWO_PI * (now - fw.lastRender) / unit;
+    fw.lastRender = now;
+    while (fw.phase > TWO_PI){
+      fw.phase -= TWO_PI; fw.unitPulseAt = now;
+      if (anim === ANIM.PULSE68) fw.meterBeat = (fw.meterBeat + 1) % 6;   // advance the 6/8 beat
+    }
+    renderContinuous(anim);
+  } else if (now - fw.stepAt >= unit){
+    fw.stepAt = now; fw.unitPulseAt = now;
+    renderStep(anim);
+  }
+}
+
+// ===================== bulb rendering (visual only) ===========================
+const cvs = document.getElementById("c");
+const ctx = cvs.getContext("2d");
+const disp = [0,0,0,0];   // smoothed display brightness 0..1 (thermal lag)
+let thermal = true, showValues = false;
+
+function lerp(a,b,t){ return a + (b-a)*t; }
+function mix(c0,c1,t){ return [lerp(c0[0],c1[0],t), lerp(c0[1],c1[1],t), lerp(c0[2],c1[2],t)]; }
+function rgba(c,a){ return `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`; }
+
+// incandescent filament colour: deep ember when dim → warm white when hot.
+const EMBER = [255, 78, 8];
+const HOT   = [255, 224, 168];
+function filamentColor(b){ return mix(EMBER, HOT, Math.pow(b, 0.55)); }
+
+function roundRectPath(x,y,w,h,r){
+  if (ctx.roundRect){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); return; }
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y, x+w,y+h, r);
+  ctx.arcTo(x+w,y+h, x,y+h, r);
+  ctx.arcTo(x,y+h, x,y, r);
+  ctx.arcTo(x,y, x+w,y, r);
+  ctx.closePath();
+}
+
+function drawBulb(cx, b){
+  const W = cvs.width, H = cvs.height;
+  const tw = W * 0.072;            // glass tube width
+  const th = H * 0.52;             // glass tube height
+  const topY = H * 0.10;
+  const botY = topY + th;
+  const midY = topY + th * 0.5;
+  const baseW = tw * 0.62;
+  const baseH = H * 0.135;
+
+  // --- floor pool of light (under the bulb) ---
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const fc = filamentColor(b);
+  const poolY = botY + baseH + H*0.03;
+  const pr = tw * (1.1 + b*2.4);
+  const pg = ctx.createRadialGradient(cx, poolY, 0, cx, poolY, pr);
+  pg.addColorStop(0, rgba(fc, 0.30 * b));
+  pg.addColorStop(1, rgba(fc, 0));
+  ctx.fillStyle = pg;
+  ctx.beginPath();
+  ctx.ellipse(cx, poolY, pr, pr*0.18, 0, 0, TWO_PI);
+  ctx.fill();
+  ctx.restore();
+
+  // --- ambient glow halo ---
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const hr = tw * (0.7 + b*2.7);
+  const hg = ctx.createRadialGradient(cx, midY, 0, cx, midY, hr);
+  hg.addColorStop(0,   rgba(fc, 0.55 * b));
+  hg.addColorStop(0.35,rgba(fc, 0.22 * b));
+  hg.addColorStop(1,   rgba(fc, 0));
+  ctx.fillStyle = hg;
+  ctx.fillRect(cx - hr, midY - hr, hr*2, hr*2);
+  ctx.restore();
+
+  // --- glass tube body ---
+  const gx = cx - tw/2;
+  roundRectPath(gx, topY, tw, th, tw*0.5);
+  const glass = ctx.createLinearGradient(gx, 0, gx+tw, 0);
+  glass.addColorStop(0,   "rgba(60,52,44,0.55)");
+  glass.addColorStop(0.5, "rgba(28,24,20,0.30)");
+  glass.addColorStop(1,   "rgba(60,52,44,0.55)");
+  ctx.fillStyle = glass;
+  ctx.fill();
+
+  // warm interior fill, scaled by brightness
+  ctx.save();
+  roundRectPath(gx, topY, tw, th, tw*0.5);
+  ctx.clip();
+  ctx.globalCompositeOperation = "lighter";
+  const ig = ctx.createRadialGradient(cx, midY, 0, cx, midY, tw*0.95);
+  ig.addColorStop(0, rgba(fc, 0.55 * b));
+  ig.addColorStop(1, rgba(fc, 0.04 * b));
+  ctx.fillStyle = ig;
+  ctx.fillRect(gx, topY, tw, th);
+  ctx.restore();
+
+  // --- filament (vertical squiggle, the classic long Edison element) ---
+  const fy0 = topY + tw*0.55;
+  const fy1 = botY - tw*0.55;
+  const amp = tw * 0.26;
+  const cycles = 7;
+  const segs = 120;
+  const pathPts = [];
+  for (let s=0;s<=segs;s++){
+    const t = s/segs;
+    const yy = lerp(fy0, fy1, t);
+    // taper amplitude at the ends so it meets the central posts
+    const env = Math.sin(t*Math.PI);
+    const xx = cx + amp * env * Math.sin(t * TWO_PI * cycles);
+    pathPts.push([xx,yy]);
+  }
+  function strokePath(){
+    ctx.beginPath();
+    ctx.moveTo(pathPts[0][0], pathPts[0][1]);
+    for (let s=1;s<pathPts.length;s++) ctx.lineTo(pathPts[s][0], pathPts[s][1]);
+    ctx.stroke();
+  }
+  // support posts (two faint vertical wires + stems to base)
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(1.4, tw*0.03);
+  ctx.strokeStyle = "rgba(120,96,70,0.5)";
+  ctx.beginPath();
+  ctx.moveTo(cx - amp*0.15, botY); ctx.lineTo(cx - amp*0.15, fy1);
+  ctx.moveTo(cx + amp*0.15, botY); ctx.lineTo(cx + amp*0.15, fy1);
+  ctx.stroke();
+
+  // unlit filament wire
+  ctx.lineWidth = Math.max(1.6, tw*0.035);
+  ctx.strokeStyle = "rgba(90,72,55,0.85)";
+  strokePath();
+
+  // lit filament (glow)
+  if (b > 0.001){
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.shadowColor = rgba(fc, 1);
+    ctx.shadowBlur = (6 + b*34) * (cvs.width/1800);
+    ctx.lineWidth = Math.max(1.8, tw*0.05);
+    ctx.strokeStyle = rgba(fc, Math.min(1, 0.25 + b));
+    strokePath();
+    // a brighter, thinner hot core
+    ctx.shadowBlur = (3 + b*16) * (cvs.width/1800);
+    ctx.lineWidth = Math.max(1, tw*0.022);
+    ctx.strokeStyle = rgba(mix(fc,[255,255,255], b*0.5), Math.min(1, 0.4 + b));
+    strokePath();
+    ctx.restore();
+  }
+
+  // glass rim highlight
+  roundRectPath(gx, topY, tw, th, tw*0.5);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.06)";
+  ctx.stroke();
+
+  // --- brass screw base ---
+  const bx = cx - baseW/2;
+  const byTop = botY - tw*0.12;
+  // neck
+  const neck = ctx.createLinearGradient(bx,0,bx+baseW,0);
+  neck.addColorStop(0,"#3a3128"); neck.addColorStop(0.5,"#6b5a44"); neck.addColorStop(1,"#3a3128");
+  ctx.fillStyle = neck;
+  roundRectPath(bx, byTop, baseW, baseH*0.32, baseW*0.18); ctx.fill();
+  // threaded body
+  const body = ctx.createLinearGradient(bx,0,bx+baseW,0);
+  body.addColorStop(0,"#2e271f"); body.addColorStop(0.5,"#8a7355"); body.addColorStop(1,"#2e271f");
+  ctx.fillStyle = body;
+  const thY = byTop + baseH*0.30;
+  ctx.fillRect(bx, thY, baseW, baseH*0.5);
+  // thread lines
+  ctx.strokeStyle = "rgba(0,0,0,0.45)"; ctx.lineWidth = Math.max(1, baseH*0.03);
+  for (let i=0;i<4;i++){ const yy = thY + baseH*0.5*(i+0.5)/4; ctx.beginPath(); ctx.moveTo(bx,yy); ctx.lineTo(bx+baseW,yy); ctx.stroke(); }
+  // tip
+  ctx.fillStyle = "#241d16";
+  roundRectPath(bx+baseW*0.28, thY+baseH*0.5, baseW*0.44, baseH*0.22, baseW*0.1); ctx.fill();
+
+  // numeric readout
+  if (showValues){
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(233,221,203,0.85)";
+    ctx.font = `${Math.round(cvs.width*0.016)}px ui-monospace, monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(String(fw.bright[bulbIndexBeingDrawn]), cx, byTop + baseH + cvs.height*0.05);
+  }
+}
+
+let bulbIndexBeingDrawn = 0;
+
+function draw(){
+  ctx.globalCompositeOperation = "source-over";
+  // backdrop
+  const bg = ctx.createLinearGradient(0,0,0,cvs.height);
+  bg.addColorStop(0,"#0c0a08"); bg.addColorStop(1,"#040303");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,cvs.width,cvs.height);
+
+  for (let i=0;i<NUM_LIGHTS;i++){
+    const cx = cvs.width * (i + 0.5) / NUM_LIGHTS;
+    bulbIndexBeingDrawn = i;
+    drawBulb(cx, disp[i]);
+  }
+}
+
+// ===================== main loop ==============================================
+let playing = true;
+let simTime = 0;            // firmware millis() equivalent (advances only while playing)
+let lastReal = performance.now();
+
+function frame(real){
+  const dtReal = Math.min(80, real - lastReal);  // clamp big gaps (tab switch)
+  lastReal = real;
+
+  if (playing){
+    simTime += dtReal;
+    updateAnim(simTime);
+  }
+
+  // thermal lag toward the firmware target (asymmetric: heats fast, cools slow)
+  const tauUp = 42, tauDown = 115;
+  for (let i=0;i<NUM_LIGHTS;i++){
+    const target = fw.bright[i] / 255;
+    if (!thermal){ disp[i] = target; continue; }
+    const tau = target > disp[i] ? tauUp : tauDown;
+    const k = 1 - Math.exp(-dtReal / tau);
+    disp[i] += (target - disp[i]) * k;
+  }
+
+  draw();
+  requestAnimationFrame(frame);
+}
+
+// ===================== UI ====================================================
+const animsEl = document.getElementById("anims");
+const descEl  = document.getElementById("desc");
+const btnPlay = document.getElementById("play");
+const btnResync = document.getElementById("resync");
+const bpmEl = document.getElementById("bpm");
+const bpmv  = document.getElementById("bpmv");
+const unitmsEl = document.getElementById("unitms");
+const paramListEl    = document.getElementById("paramList");
+const paramSnippetEl = document.getElementById("paramSnippet");
+const snippetWrapEl  = document.getElementById("snippetWrap");
+const copySnippetEl  = document.getElementById("copySnippet");
+
+ANIMS.forEach((a, idx) => {
+  const b = document.createElement("button");
+  b.className = "anim" + (a.id === anim ? " active" : "");
+  b.innerHTML = `<span class="num">${idx+1}</span>${a.name}`;
+  b.addEventListener("click", () => selectAnim(a.id));
+  b.dataset.id = a.id;
+  animsEl.appendChild(b);
+});
+
+function refreshAnimButtons(){
+  [...animsEl.children].forEach(b => b.classList.toggle("active", +b.dataset.id === anim));
+}
+function refreshDesc(){
+  const a = ANIMS.find(x => x.id === anim);
+  const kind = isContinuous(anim) ? "continuous (phase advances one full cycle per beat)"
+                                   : "stepwise (one step per beat)";
+  descEl.innerHTML = `<b>${a.name}.</b> ${a.blurb} <span style="color:var(--muted)">— ${kind}.</span>`;
+}
+function refreshUnit(){ unitmsEl.textContent = Math.round(60000 / bpm); }
+
+function fmtParam(p){ return p.int ? String(p.value) : (+p.value).toFixed(2); }
+
+function updateSnippet(){
+  const fn = SNIPPET[anim];
+  paramSnippetEl.textContent = fn ? fn() : "";
+}
+
+function buildParams(){
+  const keys = PARAMS[anim] || [];
+  paramListEl.innerHTML = "";
+  if (!keys.length){
+    paramListEl.innerHTML = `<div class="muted-note">No tunable parameters for this animation.</div>`;
+    snippetWrapEl.style.display = "none";
+    return;
+  }
+  snippetWrapEl.style.display = "";
+  keys.forEach(key => {
+    const p = P[key];
+    const row = document.createElement("div");
+    row.className = "param-row";
+    const name = document.createElement("span");
+    name.className = "param-name"; name.textContent = p.label;
+    const range = document.createElement("input");
+    range.type = "range"; range.min = p.min; range.max = p.max; range.step = p.step; range.value = p.value;
+    const val = document.createElement("span");
+    val.className = "val"; val.textContent = fmtParam(p);
+    row.append(name, range, val);
+    paramListEl.appendChild(row);
+
+    let note;
+    if (p.note){
+      note = document.createElement("div");
+      note.className = "param-note"; note.textContent = p.note(p.value);
+      paramListEl.appendChild(note);
+    }
+    range.addEventListener("input", () => {
+      p.value = p.int ? parseInt(range.value, 10) : parseFloat(range.value);
+      val.textContent = fmtParam(p);
+      if (note) note.textContent = p.note(p.value);
+      updateSnippet();
+    });
+  });
+  updateSnippet();
+}
+
+function selectAnim(id){
+  anim = id;
+  resetAnimState(simTime);
+  refreshAnimButtons();
+  refreshDesc();
+  buildParams();
+}
+
+btnPlay.addEventListener("click", () => {
+  playing = !playing;
+  btnPlay.textContent = playing ? "⏸ Pause" : "▶ Play";
+});
+btnResync.addEventListener("click", () => resetAnimState(simTime));
+bpmEl.addEventListener("input", () => {
+  bpm = +bpmEl.value; bpmv.textContent = bpm; refreshUnit();
+});
+document.getElementById("thermal").addEventListener("change", e => thermal = e.target.checked);
+document.getElementById("values").addEventListener("change", e => showValues = e.target.checked);
+copySnippetEl.addEventListener("click", () => {
+  const text = paramSnippetEl.textContent;
+  const done = () => { copySnippetEl.textContent = "Copied!"; setTimeout(() => copySnippetEl.textContent = "Copy", 1200); };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, () => {});
+  } else {
+    const r = document.createRange(); r.selectNodeContents(paramSnippetEl);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r); done();
+  }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === " "){ e.preventDefault(); btnPlay.click(); }
+  else if (e.key === "r" || e.key === "R"){ resetAnimState(simTime); }
+  else if (e.key >= "1" && e.key <= "8"){ const i = +e.key - 1; if (i < ANIMS.length) selectAnim(ANIMS[i].id); }
+});
+
+// init
+refreshDesc(); refreshUnit(); buildParams();
+resetAnimState(0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
