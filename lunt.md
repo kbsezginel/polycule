@@ -77,7 +77,10 @@ the [live animation preview](lunt-animations.html).
 | 5 | Twinkle | Random bulbs sparkle bright then fade |
 | 6 | Build & drop | Fills 1→12→123→1234, blackout, repeat |
 | 7 | Alternate | 1&3 ↔ 2&4 swap back and forth |
-| 8 | Strobe | All bulbs flash together |
+| 8 | 6/8 Pulse | For a 6/8 feel: bulbs 1 & 2 flash-and-fade on beats 1–3 (strong→medium→weak), then 3 & 4 on beats 4–6, repeating |
+
+Here each of the six beats is one count of the 6/8 measure, so one free-run beat = one flash;
+**6/8 Pulse** defaults to **120 BPM** (the other animations default to ~135).
 
 **MIDI clock:** when a clock is running, the animation beat-locks and the encoder selects
 the subdivision — **1 bar · 1/2 · 1/4 · 1/8 · 1/16** (shown as 1–5 red pixels). With no
@@ -259,4 +262,4 @@ clock is arriving. If it stays blue (or dark):
 
 If the indicator *is* purple but tempo seems to do nothing: make sure you've **entered**
 an animation (pressed the encoder), since the clock only drives a running animation, and
-that you're watching a tempo-sensitive one (e.g. comet or strobe).
+that you're watching a tempo-sensitive one (e.g. comet or 6/8 pulse).
