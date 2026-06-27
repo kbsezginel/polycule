@@ -6,6 +6,9 @@ switch selects between **MANUAL** (set each bulb's brightness by hand, or over M
 **ANIMATION** (pick from self-running light shows). An 8-LED NeoPixel strip is the
 on-device display — **warm yellow** in MANUAL, **red** in ANIMATION.
 
+> ▶ **[Live animation preview](lunt-animations.html)** — an interactive
+> simulation of all 8 light shows on four Edison-style bulbs, no hardware needed.
+
 ## How it works
 An Arduino Nano controls the four channels of an [AC Light Dimmer Module](https://robotdyn.com/ac-light-dimmer-module-4-channel-3-3v-5v-logic-ac-50-60hz-220v-110v.html)
 via phase-cut dimming (the [Dimmable Light](https://github.com/fabianoriccardi/dimmable-light)
@@ -54,7 +57,8 @@ Entering MANUAL mode resets all bulbs to **mid brightness** (`MANUAL_RESET_BRIGH
 so nothing stays stuck at whatever level an animation left it.
 
 ### ANIMATION mode
-The strip is **red**. Each of the 8 animations sits on one of the 8 pixels.
+The strip is **red**. Each of the 8 animations sits on one of the 8 pixels. See them all in
+the [live animation preview](lunt-animations.html).
 
 | Control | Action |
 | --- | --- |
