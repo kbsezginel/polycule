@@ -76,8 +76,12 @@ the [live animation preview](lunt-animations.html).
 | 4 | Breathe | All four fade up and down together |
 | 5 | Twinkle | Random bulbs sparkle bright then fade |
 | 6 | Build & drop | Fills 1→12→123→1234, blackout, repeat |
-| 7 | Alternate | 1&3 ↔ 2&4 swap back and forth |
+| 7 | Waves | A slow, smooth sine swell rolling in and out across the bulbs; never goes fully dark |
 | 8 | 6/8 Pulse | For a 6/8 feel: bulbs 1 & 2 flash-and-fade on beats 1–3 (strong→medium→weak), then 3 & 4 on beats 4–6, repeating |
+
+**Waves** is a calming, continuous sine. Its phase spread (the offset between adjacent bulbs)
+sets the feel — 0° is all bulbs in phase, ~90° is a wave rolling across the row — and a
+brightness floor keeps a minimum glow. It defaults to a slow **~40 BPM**.
 
 Here each of the six beats is one count of the 6/8 measure, so one free-run beat = one flash;
 **6/8 Pulse** defaults to **120 BPM** (the other animations default to ~135).

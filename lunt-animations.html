@@ -179,18 +179,19 @@
 const NUM_LIGHTS = 4;
 const TWO_PI = Math.PI * 2;
 
-const ANIM = { COMET:0, LARSON:1, SINE:2, BREATHE:3, TWINKLE:4, BUILD:5, ALT:6, PULSE68:7 };
+const ANIM = { COMET:0, LARSON:1, SINE:2, BREATHE:3, TWINKLE:4, BUILD:5, WAVES:6, PULSE68:7 };
+// defaultBpm mirrors the firmware's per-animation gAnimSpeed default (most ≈135 BPM).
 const ANIMS = [
-  { id: ANIM.COMET,   name: "Comet",        blurb: "A bright spot sweeps 1→2→3→4 with a fading tail." },
-  { id: ANIM.LARSON,  name: "Larson",       blurb: "A single bright bulb bounces 1→4→1 (Knight Rider)." },
-  { id: ANIM.SINE,    name: "Sine sweep",   blurb: "A phase-offset sine wave rolls smoothly across the bulbs." },
-  { id: ANIM.BREATHE, name: "Breathe",      blurb: "All four fade up and down together." },
-  { id: ANIM.TWINKLE, name: "Twinkle",      blurb: "Random bulbs sparkle bright then fade." },
-  { id: ANIM.BUILD,   name: "Build & drop", blurb: "Fills 1→12→123→1234, blackout, repeat." },
-  { id: ANIM.ALT,     name: "Alternate",    blurb: "1 & 3 ↔ 2 & 4 swap back and forth." },
-  { id: ANIM.PULSE68, name: "6/8 Pulse",    blurb: "6/8 feel: bulbs 1 & 2 flash-and-fade strong→medium→weak on beats 1–3, then 3 & 4 on beats 4–6. Defaults to 120 BPM." },
+  { id: ANIM.COMET,   name: "Comet",        defaultBpm: 135, blurb: "A bright spot sweeps 1→2→3→4 with a fading tail." },
+  { id: ANIM.LARSON,  name: "Larson",       defaultBpm: 135, blurb: "A single bright bulb bounces 1→4→1 (Knight Rider)." },
+  { id: ANIM.SINE,    name: "Sine sweep",   defaultBpm: 135, blurb: "A phase-offset sine wave rolls smoothly across the bulbs." },
+  { id: ANIM.BREATHE, name: "Breathe",      defaultBpm: 135, blurb: "All four fade up and down together." },
+  { id: ANIM.TWINKLE, name: "Twinkle",      defaultBpm: 135, blurb: "Random bulbs sparkle bright then fade." },
+  { id: ANIM.BUILD,   name: "Build & drop", defaultBpm: 135, blurb: "Fills 1→12→123→1234, blackout, repeat." },
+  { id: ANIM.WAVES,   name: "Waves",        defaultBpm: 40,  blurb: "A slow, smooth sine swell rolling in and out across the bulbs — calming, never fully dark. Defaults to ~40 BPM." },
+  { id: ANIM.PULSE68, name: "6/8 Pulse",    defaultBpm: 120, blurb: "6/8 feel: bulbs 1 & 2 flash-and-fade strong→medium→weak on beats 1–3, then 3 & 4 on beats 4–6. Defaults to 120 BPM." },
 ];
-function isContinuous(a){ return a === ANIM.SINE || a === ANIM.BREATHE || a === ANIM.PULSE68; }
+function isContinuous(a){ return a === ANIM.SINE || a === ANIM.BREATHE || a === ANIM.WAVES || a === ANIM.PULSE68; }
 
 // ===================== tunable animation parameters ===========================
 // Each entry mirrors a firmware constant. The render code reads `.value` live, so
@@ -205,12 +206,17 @@ const P = {
   p68peak2:  { label: "Beat 3 peak  (PULSE68_PEAK[2])", min: 0, max: 1, step: 0.05, value: 0.3 },
   p68decay:  { label: "Flash decay  (PULSE68_DECAY)", min: 0.5, max: 8, step: 0.1, value: 3.5,
     note: v => `e^(−frac·${v.toFixed(1)})  (higher = snappier, fades out sooner within the beat)` },
+  waveSpread:{ label: "Phase spread  (WAVE_SPREAD)", min: 0, max: 180, step: 5, value: 90, int: true,
+    note: v => `${v}° between adjacent bulbs (0 = all in phase, 90° = a wave rolling across the row)` },
+  waveFloor: { label: "Min glow  (WAVE_FLOOR)", min: 0, max: 200, step: 5, value: 40, int: true,
+    note: v => `bulbs swell between ${v} and 255 (higher = gentler, never fully dark)` },
 };
 // Which params each animation exposes (others have no tunable constants).
 const PARAMS = {
   [ANIM.COMET]:   ["tailShift"],
   [ANIM.LARSON]:  ["tailShift"],
   [ANIM.TWINKLE]: ["tailShift"],
+  [ANIM.WAVES]:   ["waveSpread", "waveFloor"],
   [ANIM.PULSE68]: ["p68peak0", "p68peak1", "p68peak2", "p68decay"],
 };
 // The exact lunt.ino line(s) to paste, built from the current values.
@@ -218,6 +224,9 @@ const SNIPPET = {
   [ANIM.COMET]:   () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
   [ANIM.LARSON]:  () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
   [ANIM.TWINKLE]: () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
+  [ANIM.WAVES]:   () =>
+    `const float WAVE_SPREAD = ${(P.waveSpread.value * Math.PI / 180).toFixed(4)}f;   // ${P.waveSpread.value} deg between adjacent bulbs\n` +
+    `const byte  WAVE_FLOOR  = ${P.waveFloor.value};`,
   [ANIM.PULSE68]: () =>
     `const float PULSE68_PEAK[3] = {${P.p68peak0.value.toFixed(2)}f, ${P.p68peak1.value.toFixed(2)}f, ${P.p68peak2.value.toFixed(2)}f};\n` +
     `const float PULSE68_DECAY   = ${P.p68decay.value.toFixed(1)}f;`,
@@ -227,10 +236,10 @@ const SNIPPET = {
 const fw = {
   bright: [0,0,0,0],   // raw firmware brightness, 0..255 (== gBrightness[])
   stepAt: 0, lastRender: 0, unitPulseAt: 0,
-  phase: 0, pos: 0, dir: 1, buildStep: 0, altState: false, meterBeat: 0,
+  phase: 0, pos: 0, dir: 1, buildStep: 0, meterBeat: 0,
 };
 let anim = ANIM.COMET;
-let bpm = 120;
+let bpm = 135;
 
 function setLight(i, v){ fw.bright[i] = Math.max(0, Math.min(255, Math.round(v))); }
 function setAllLights(v){ for (let i=0;i<NUM_LIGHTS;i++) setLight(i, v); }
@@ -254,13 +263,6 @@ function renderStep(a){
       fw.buildStep = (fw.buildStep + 1) % (NUM_LIGHTS + 1);
       for (let i=0;i<NUM_LIGHTS;i++) setLight(i, i < fw.buildStep ? 255 : 0);
       break;
-    case ANIM.ALT:
-      fw.altState = !fw.altState;
-      setLight(0, fw.altState ? 255 : 0);
-      setLight(2, fw.altState ? 255 : 0);
-      setLight(1, fw.altState ? 0 : 255);
-      setLight(3, fw.altState ? 0 : 255);
-      break;
   }
 }
 
@@ -272,6 +274,13 @@ function renderContinuous(a){
     }
   } else if (a === ANIM.BREATHE){
     setAllLights((Math.sin(fw.phase) * 0.5 + 0.5) * 255);
+  } else if (a === ANIM.WAVES){ // smooth sine swell, tunable phase spread + a minimum glow
+    const spread = P.waveSpread.value * Math.PI / 180;
+    const floor  = P.waveFloor.value;
+    for (let i=0;i<NUM_LIGHTS;i++){
+      const s = 0.5 + 0.5 * Math.sin(fw.phase + i * spread);
+      setLight(i, floor + (255 - floor) * s);
+    }
   } else { // PULSE68 — 6/8 pulse: flash on each beat, fade out, peak steps down per group
     const frac  = fw.phase / TWO_PI;                  // 0..1 through the current beat
     const env   = Math.exp(-frac * P.p68decay.value); // flash at the onset, then fade
@@ -287,7 +296,7 @@ function renderContinuous(a){
 
 function resetAnimState(now){
   fw.phase = 0; fw.lastRender = now; fw.stepAt = now; fw.unitPulseAt = now;
-  fw.pos = 0; fw.dir = 1; fw.buildStep = 0; fw.altState = false; fw.meterBeat = 0;
+  fw.pos = 0; fw.dir = 1; fw.buildStep = 0; fw.meterBeat = 0;
   setAllLights(0);
   if (!isContinuous(anim)) renderStep(anim);   // show the first frame now
 }
@@ -605,8 +614,11 @@ function buildParams(){
   updateSnippet();
 }
 
+function setBpm(v){ bpm = v; bpmEl.value = v; bpmv.textContent = v; refreshUnit(); }
+
 function selectAnim(id){
   anim = id;
+  setBpm(ANIMS.find(x => x.id === anim).defaultBpm);   // each animation has its own default BPM
   resetAnimState(simTime);
   refreshAnimButtons();
   refreshDesc();
@@ -641,8 +653,7 @@ document.addEventListener("keydown", e => {
 });
 
 // init
-refreshDesc(); refreshUnit(); buildParams();
-resetAnimState(0);
+selectAnim(anim);   // sets BPM / description / params for the initial animation and resets state
 requestAnimationFrame(frame);
 </script>
 </body>
