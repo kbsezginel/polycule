@@ -81,7 +81,9 @@ the [live animation preview](lunt-animations.html).
 
 **Sine** is a plain LFO — all four bulbs together. Its `SINE_SUBDIV` parameter sets how
 many beats one cycle takes: **1, 1/2, 1/3, 1/4, 1/5, 1/6, 1/7, 1/9** (i.e. one cycle every
-1, 2, 3 … 9 beats). It defaults to **1/2** (one cycle every two beats).
+1, 2, 3 … 9 beats), defaulting to **1/4**. `SINE_MIN_PCT` / `SINE_MAX_PCT` set the trough
+and peak brightness as a percent of full — default **2%–66%**, so it never goes fully dark
+or fully bright.
 
 **Drift** gives each bulb its own oscillation rate, so they wander in and out of phase
 independently — calming, organic, never a marching wave. Its one parameter (`DRIFT_SPREAD`)

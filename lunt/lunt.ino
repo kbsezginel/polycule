@@ -56,7 +56,10 @@ const byte TAIL_SHIFT = 2;                       // comet/larson/twinkle fade: b
 
 // Sine LFO subdivision: the sine completes one cycle every SINE_SUBDIV beats, so its rate
 // is the BPM divided by this. Use {1, 2, 3, 4, 5, 6, 7, 9} for 1, 1/2, 1/3 ... 1/9.
-const byte SINE_SUBDIV = 2;                      // default 1/2 (one cycle every 2 beats)
+const byte SINE_SUBDIV = 4;                      // default 1/4 (one cycle every 4 beats)
+// Sine LFO brightness range, as a percent of full. The sine swings between these.
+const byte SINE_MIN_PCT = 2;                     // trough brightness (% of 255)
+const byte SINE_MAX_PCT = 66;                    // peak brightness  (% of 255)
 
 // Waves animation. A slow, smooth sine swell. WAVE_SPREAD is the phase offset between
 // adjacent bulbs (0 = all in phase, PI/2 = a wave rolling across the row, PI = neighbours
@@ -561,8 +564,11 @@ void renderStep(byte a) {
 }
 
 void renderContinuous(byte a) {
-  if (a == ANIM_SINE) {          // simple sine LFO: all bulbs fade up and down together
-    setAllLights((int)((sin(gPhase) * 0.5f + 0.5f) * 255));
+  if (a == ANIM_SINE) {          // simple sine LFO: all bulbs together, between min and max
+    float s = sin(gPhase) * 0.5f + 0.5f;                 // 0..1
+    int lo = (int)SINE_MIN_PCT * 255 / 100;
+    int hi = (int)SINE_MAX_PCT * 255 / 100;
+    setAllLights(lo + (int)((hi - lo) * s));
   } else if (a == ANIM_DRIFT) {  // each bulb on its own phase (advanced per-rate in updateAnim)
     for (byte i = 0; i < NUM_LIGHTS; i++)
       setLight(i, (int)((sin(gDriftPhase[i]) * 0.5f + 0.5f) * 255));

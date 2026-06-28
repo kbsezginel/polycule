@@ -209,9 +209,13 @@ const DRIFT_MULT = [1.00, 1.18, 0.86, 1.34];
 const P = {
   tailShift: { label: "Tail fade  (TAIL_SHIFT)", min: 1, max: 4, step: 1, value: 2, int: true,
     note: v => `b -= b >> ${v}  →  keeps ${(1 - 1/(1<<v)).toFixed(3)}× of each bulb per step (smaller = longer tail)` },
-  sineSubdiv:{ label: "Subdivision  (SINE_SUBDIV)", value: 2, options: [1, 2, 3, 4, 5, 6, 7, 9],
+  sineSubdiv:{ label: "Subdivision  (SINE_SUBDIV)", value: 4, options: [1, 2, 3, 4, 5, 6, 7, 9],
     fmt: v => v === 1 ? "1" : "1/" + v,
     note: v => `one cycle every ${v} beat${v === 1 ? "" : "s"} — the LFO runs at ${v === 1 ? "the BPM" : "BPM ÷ " + v}` },
+  sineMin:   { label: "Min brightness  (SINE_MIN_PCT)", min: 0, max: 100, step: 1, value: 2, int: true,
+    note: v => `${v}% (≈ ${Math.round(v*255/100)}/255) at the trough` },
+  sineMax:   { label: "Max brightness  (SINE_MAX_PCT)", min: 0, max: 100, step: 1, value: 66, int: true,
+    note: v => `${v}% (≈ ${Math.round(v*255/100)}/255) at the peak` },
   p68peak0:  { label: "Beat 1 peak  (PULSE68_PEAK[0])", min: 0, max: 1, step: 0.05, value: 1.0 },
   p68peak1:  { label: "Beat 2 peak  (PULSE68_PEAK[1])", min: 0, max: 1, step: 0.05, value: 0.6 },
   p68peak2:  { label: "Beat 3 peak  (PULSE68_PEAK[2])", min: 0, max: 1, step: 0.05, value: 0.3 },
@@ -229,7 +233,7 @@ const P = {
 const PARAMS = {
   [ANIM.COMET]:   ["tailShift"],
   [ANIM.LARSON]:  ["tailShift"],
-  [ANIM.SINE]:    ["sineSubdiv"],
+  [ANIM.SINE]:    ["sineSubdiv", "sineMin", "sineMax"],
   [ANIM.DRIFT]:   ["driftSpread"],
   [ANIM.TWINKLE]: ["tailShift"],
   [ANIM.WAVES]:   ["waveSpread", "waveFloor"],
@@ -239,7 +243,10 @@ const PARAMS = {
 const SNIPPET = {
   [ANIM.COMET]:   () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
   [ANIM.LARSON]:  () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
-  [ANIM.SINE]:    () => `const byte SINE_SUBDIV = ${P.sineSubdiv.value};   // ${P.sineSubdiv.value === 1 ? "1" : "1/" + P.sineSubdiv.value} (one cycle every ${P.sineSubdiv.value} beats)`,
+  [ANIM.SINE]:    () =>
+    `const byte SINE_SUBDIV  = ${P.sineSubdiv.value};   // ${P.sineSubdiv.value === 1 ? "1" : "1/" + P.sineSubdiv.value} (one cycle every ${P.sineSubdiv.value} beats)\n` +
+    `const byte SINE_MIN_PCT = ${P.sineMin.value};   // trough brightness, % of full\n` +
+    `const byte SINE_MAX_PCT = ${P.sineMax.value};  // peak brightness, % of full`,
   [ANIM.DRIFT]:   () => `const float DRIFT_SPREAD = ${(+P.driftSpread.value).toFixed(2)}f;`,
   [ANIM.TWINKLE]: () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
   [ANIM.WAVES]:   () =>
@@ -290,8 +297,11 @@ function renderStep(a){
 }
 
 function renderContinuous(a){
-  if (a === ANIM.SINE){ // simple sine LFO: all bulbs fade up and down together
-    setAllLights((Math.sin(fw.phase) * 0.5 + 0.5) * 255);
+  if (a === ANIM.SINE){ // simple sine LFO: all bulbs together, between min and max
+    const s = Math.sin(fw.phase) * 0.5 + 0.5;            // 0..1
+    const lo = P.sineMin.value * 255 / 100;
+    const hi = P.sineMax.value * 255 / 100;
+    setAllLights(lo + (hi - lo) * s);
   } else if (a === ANIM.DRIFT){ // each bulb on its own phase (advanced per-rate in updateAnim)
     for (let i=0;i<NUM_LIGHTS;i++)
       setLight(i, (Math.sin(fw.driftPhase[i]) * 0.5 + 0.5) * 255);
