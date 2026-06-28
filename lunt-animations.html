@@ -184,7 +184,7 @@ const ANIM = { COMET:0, LARSON:1, SINE:2, DRIFT:3, TWINKLE:4, BUILD:5, WAVES:6, 
 const ANIMS = [
   { id: ANIM.COMET,   name: "Comet",        defaultBpm: 135, blurb: "A bright spot sweeps 1→2→3→4 with a fading tail." },
   { id: ANIM.LARSON,  name: "Larson",       defaultBpm: 135, blurb: "A single bright bulb bounces 1→4→1 (Knight Rider)." },
-  { id: ANIM.SINE,    name: "Sine sweep",   defaultBpm: 135, blurb: "A phase-offset sine wave rolls smoothly across the bulbs." },
+  { id: ANIM.SINE,    name: "Sine",         defaultBpm: 135, blurb: "A simple sine LFO — all four bulbs fade up and down together; rate follows the BPM." },
   { id: ANIM.DRIFT,   name: "Drift",        defaultBpm: 30,  blurb: "Each bulb is its own oscillator at a slightly different rate, wandering in and out of phase independently — calming, never a marching wave. Defaults to ~30 BPM." },
   { id: ANIM.TWINKLE, name: "Twinkle",      defaultBpm: 135, blurb: "Random bulbs sparkle bright then fade." },
   { id: ANIM.BUILD,   name: "Build & drop", defaultBpm: 135, blurb: "Fills 1→12→123→1234, blackout, repeat." },
@@ -275,11 +275,8 @@ function renderStep(a){
 }
 
 function renderContinuous(a){
-  if (a === ANIM.SINE){
-    for (let i=0;i<NUM_LIGHTS;i++){
-      const s = Math.sin(fw.phase + i * (TWO_PI / NUM_LIGHTS));
-      setLight(i, (s * 0.5 + 0.5) * 255);
-    }
+  if (a === ANIM.SINE){ // simple sine LFO: all bulbs fade up and down together
+    setAllLights((Math.sin(fw.phase) * 0.5 + 0.5) * 255);
   } else if (a === ANIM.DRIFT){ // each bulb on its own phase (advanced per-rate in updateAnim)
     for (let i=0;i<NUM_LIGHTS;i++)
       setLight(i, (Math.sin(fw.driftPhase[i]) * 0.5 + 0.5) * 255);

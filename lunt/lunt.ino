@@ -22,7 +22,7 @@
 //         menu. MIDI notes/CC are ignored. If a MIDI clock is present the animation
 //         beat-locks and the encoder picks the subdivision (1 bar / 1/2 / 1/4 / 1/8 / 1/16).
 //         The right two pixels show the tempo (blue=no clock / purple=beat) and subdivision.
-//       - Animations: comet, larson, sine sweep, drift, twinkle, build, waves, 6/8 pulse.
+//       - Animations: comet, larson, sine, drift, twinkle, build, waves, 6/8 pulse.
 // ----------------------------------------------------------------------------------
 #include <MIDI.h>
 #include <Adafruit_NeoPixel.h>
@@ -555,11 +555,8 @@ void renderStep(byte a) {
 }
 
 void renderContinuous(byte a) {
-  if (a == ANIM_SINE) {
-    for (byte i = 0; i < NUM_LIGHTS; i++) {
-      float s = sin(gPhase + i * (TWO_PI / NUM_LIGHTS));
-      setLight(i, (int)((s * 0.5f + 0.5f) * 255));
-    }
+  if (a == ANIM_SINE) {          // simple sine LFO: all bulbs fade up and down together
+    setAllLights((int)((sin(gPhase) * 0.5f + 0.5f) * 255));
   } else if (a == ANIM_DRIFT) {  // each bulb on its own phase (advanced per-rate in updateAnim)
     for (byte i = 0; i < NUM_LIGHTS; i++)
       setLight(i, (int)((sin(gDriftPhase[i]) * 0.5f + 0.5f) * 255));

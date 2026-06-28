@@ -72,7 +72,7 @@ the [live animation preview](lunt-animations.html).
 | --- | --- | --- |
 | 1 | Comet | A bright spot sweeps 1→2→3→4 with a fading tail |
 | 2 | Larson | A single bright bulb bounces 1→4→1 (Knight Rider) |
-| 3 | Sine sweep | A phase-offset sine wave rolls smoothly across the bulbs |
+| 3 | Sine | A simple sine LFO — all four bulbs fade up and down together; rate follows the BPM |
 | 4 | Drift | Each bulb is its own slow oscillator, wandering in and out of phase independently (0 spread = all breathe together) |
 | 5 | Twinkle | Random bulbs sparkle bright then fade |
 | 6 | Build & drop | Fills 1→12→123→1234, blackout, repeat |
