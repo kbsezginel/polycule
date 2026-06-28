@@ -86,6 +86,12 @@
   .param-name { color: var(--muted); font-size: 13px; min-width: 230px; }
   .param-row input[type="range"] { width: 200px; }
   .param-row .val { min-width: 48px; }
+  .param-select {
+    appearance: none; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px;
+    font-size: 13px; cursor: pointer; min-width: 90px;
+  }
+  .param-select:hover { border-color: var(--accent-dim); }
   .param-note { color: var(--muted); font-size: 11.5px; font-family: ui-monospace, monospace;
     margin: -2px 0 8px 242px; opacity: .85; }
   .muted-note { color: var(--muted); font-size: 13px; font-style: italic; }
@@ -203,6 +209,9 @@ const DRIFT_MULT = [1.00, 1.18, 0.86, 1.34];
 const P = {
   tailShift: { label: "Tail fade  (TAIL_SHIFT)", min: 1, max: 4, step: 1, value: 2, int: true,
     note: v => `b -= b >> ${v}  →  keeps ${(1 - 1/(1<<v)).toFixed(3)}× of each bulb per step (smaller = longer tail)` },
+  sineSubdiv:{ label: "Subdivision  (SINE_SUBDIV)", value: 2, options: [1, 2, 3, 4, 5, 6, 7, 9],
+    fmt: v => v === 1 ? "1" : "1/" + v,
+    note: v => `one cycle every ${v} beat${v === 1 ? "" : "s"} — the LFO runs at ${v === 1 ? "the BPM" : "BPM ÷ " + v}` },
   p68peak0:  { label: "Beat 1 peak  (PULSE68_PEAK[0])", min: 0, max: 1, step: 0.05, value: 1.0 },
   p68peak1:  { label: "Beat 2 peak  (PULSE68_PEAK[1])", min: 0, max: 1, step: 0.05, value: 0.6 },
   p68peak2:  { label: "Beat 3 peak  (PULSE68_PEAK[2])", min: 0, max: 1, step: 0.05, value: 0.3 },
@@ -220,6 +229,7 @@ const P = {
 const PARAMS = {
   [ANIM.COMET]:   ["tailShift"],
   [ANIM.LARSON]:  ["tailShift"],
+  [ANIM.SINE]:    ["sineSubdiv"],
   [ANIM.DRIFT]:   ["driftSpread"],
   [ANIM.TWINKLE]: ["tailShift"],
   [ANIM.WAVES]:   ["waveSpread", "waveFloor"],
@@ -229,6 +239,7 @@ const PARAMS = {
 const SNIPPET = {
   [ANIM.COMET]:   () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
   [ANIM.LARSON]:  () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
+  [ANIM.SINE]:    () => `const byte SINE_SUBDIV = ${P.sineSubdiv.value};   // ${P.sineSubdiv.value === 1 ? "1" : "1/" + P.sineSubdiv.value} (one cycle every ${P.sineSubdiv.value} beats)`,
   [ANIM.DRIFT]:   () => `const float DRIFT_SPREAD = ${(+P.driftSpread.value).toFixed(2)}f;`,
   [ANIM.TWINKLE]: () => `const byte TAIL_SHIFT = ${P.tailShift.value};   // shared: comet / larson / twinkle`,
   [ANIM.WAVES]:   () =>
@@ -254,7 +265,11 @@ function setAllLights(v){ for (let i=0;i<NUM_LIGHTS;i++) setLight(i, v); }
 function decayAll(){ const sh = P.tailShift.value; for (let i=0;i<NUM_LIGHTS;i++){ const b=fw.bright[i]; setLight(i, b - (b >> sh)); } }
 
 // animUnitMs() free-run path: one unit = one beat = 60000 / BPM ms.
-function animUnitMs(){ return 60000 / bpm; }
+function animUnitMs(){
+  let unit = 60000 / bpm;
+  if (anim === ANIM.SINE) unit *= P.sineSubdiv.value;   // sine: one cycle every N beats
+  return unit;
+}
 
 function renderStep(a){
   switch(a){
@@ -584,7 +599,7 @@ function refreshDesc(){
 }
 function refreshUnit(){ unitmsEl.textContent = Math.round(60000 / bpm); }
 
-function fmtParam(p){ return p.int ? String(p.value) : (+p.value).toFixed(2); }
+function fmtParam(p){ return p.fmt ? p.fmt(p.value) : p.int ? String(p.value) : (+p.value).toFixed(2); }
 
 function updateSnippet(){
   const fn = SNIPPET[anim];
@@ -606,25 +621,45 @@ function buildParams(){
     row.className = "param-row";
     const name = document.createElement("span");
     name.className = "param-name"; name.textContent = p.label;
-    const range = document.createElement("input");
-    range.type = "range"; range.min = p.min; range.max = p.max; range.step = p.step; range.value = p.value;
-    const val = document.createElement("span");
-    val.className = "val"; val.textContent = fmtParam(p);
-    row.append(name, range, val);
-    paramListEl.appendChild(row);
+    row.appendChild(name);
 
     let note;
+    const refreshNote = () => { if (note) note.textContent = p.note(p.value); };
+
+    if (p.options){                                  // discrete choices → dropdown
+      const sel = document.createElement("select");
+      sel.className = "param-select";
+      p.options.forEach(opt => {
+        const o = document.createElement("option");
+        o.value = opt; o.textContent = p.fmt ? p.fmt(opt) : opt;
+        if (opt === p.value) o.selected = true;
+        sel.appendChild(o);
+      });
+      row.appendChild(sel);
+      paramListEl.appendChild(row);
+      sel.addEventListener("change", () => {
+        p.value = parseFloat(sel.value);
+        refreshNote(); updateSnippet();
+      });
+    } else {                                         // continuous → slider
+      const range = document.createElement("input");
+      range.type = "range"; range.min = p.min; range.max = p.max; range.step = p.step; range.value = p.value;
+      const val = document.createElement("span");
+      val.className = "val"; val.textContent = fmtParam(p);
+      row.append(range, val);
+      paramListEl.appendChild(row);
+      range.addEventListener("input", () => {
+        p.value = p.int ? parseInt(range.value, 10) : parseFloat(range.value);
+        val.textContent = fmtParam(p);
+        refreshNote(); updateSnippet();
+      });
+    }
+
     if (p.note){
       note = document.createElement("div");
       note.className = "param-note"; note.textContent = p.note(p.value);
       paramListEl.appendChild(note);
     }
-    range.addEventListener("input", () => {
-      p.value = p.int ? parseInt(range.value, 10) : parseFloat(range.value);
-      val.textContent = fmtParam(p);
-      if (note) note.textContent = p.note(p.value);
-      updateSnippet();
-    });
   });
   updateSnippet();
 }

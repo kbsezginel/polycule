@@ -72,12 +72,16 @@ the [live animation preview](lunt-animations.html).
 | --- | --- | --- |
 | 1 | Comet | A bright spot sweeps 1→2→3→4 with a fading tail |
 | 2 | Larson | A single bright bulb bounces 1→4→1 (Knight Rider) |
-| 3 | Sine | A simple sine LFO — all four bulbs fade up and down together; rate follows the BPM |
+| 3 | Sine | A simple sine LFO — all four bulbs fade up and down together; rate follows the BPM, divided by a subdivision |
 | 4 | Drift | Each bulb is its own slow oscillator, wandering in and out of phase independently (0 spread = all breathe together) |
 | 5 | Twinkle | Random bulbs sparkle bright then fade |
 | 6 | Build & drop | Fills 1→12→123→1234, blackout, repeat |
 | 7 | Waves | A slow, smooth sine swell rolling in and out across the bulbs; never goes fully dark |
 | 8 | 6/8 Pulse | For a 6/8 feel: bulbs 1 & 2 flash-and-fade on beats 1–3 (strong→medium→weak), then 3 & 4 on beats 4–6, repeating |
+
+**Sine** is a plain LFO — all four bulbs together. Its `SINE_SUBDIV` parameter sets how
+many beats one cycle takes: **1, 1/2, 1/3, 1/4, 1/5, 1/6, 1/7, 1/9** (i.e. one cycle every
+1, 2, 3 … 9 beats). It defaults to **1/2** (one cycle every two beats).
 
 **Drift** gives each bulb its own oscillation rate, so they wander in and out of phase
 independently — calming, organic, never a marching wave. Its one parameter (`DRIFT_SPREAD`)

@@ -54,6 +54,10 @@ const int  ANIM_BPM_MIN = 20;                    // encoder fully left  (slowest
 const int  ANIM_BPM_MAX = 250;                   // encoder fully right (fastest)
 const byte TAIL_SHIFT = 2;                       // comet/larson/twinkle fade: b -= b >> this
 
+// Sine LFO subdivision: the sine completes one cycle every SINE_SUBDIV beats, so its rate
+// is the BPM divided by this. Use {1, 2, 3, 4, 5, 6, 7, 9} for 1, 1/2, 1/3 ... 1/9.
+const byte SINE_SUBDIV = 2;                      // default 1/2 (one cycle every 2 beats)
+
 // Waves animation. A slow, smooth sine swell. WAVE_SPREAD is the phase offset between
 // adjacent bulbs (0 = all in phase, PI/2 = a wave rolling across the row, PI = neighbours
 // opposite). WAVE_FLOOR keeps a minimum glow so the bulbs never go fully dark (calmer).
@@ -495,7 +499,9 @@ unsigned long animUnitMs() {
     return max(20L, ms);
   }
   int bpm = map(gAnimSpeed[gAnimSel], 0, 255, ANIM_BPM_MIN, ANIM_BPM_MAX);  // right = faster
-  return 60000UL / bpm;                                                     // one unit = one beat
+  unsigned long unit = 60000UL / bpm;                                       // one unit = one beat
+  if (gAnimSel == ANIM_SINE) unit *= SINE_SUBDIV;                           // sine: one cycle every N beats
+  return unit;
 }
 
 void updateAnim() {
