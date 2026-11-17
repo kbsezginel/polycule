@@ -9,6 +9,9 @@ on-device display — **warm yellow** in MANUAL, **red** in ANIMATION.
 > ▶ **[Live animation preview](lunt-animations.html)** — an interactive
 > simulation of all 8 light shows on four Edison-style bulbs, no hardware needed.
 
+> 🥁 **[Lunt CV](#lunt-cv-drum-reactive-lights)** — an alternate firmware that swaps
+> ANIMATION for a CV input, so the bulbs flash with drum hits (e.g. via a ZOIA envelope follower).
+
 ## How it works
 An Arduino Nano controls the four channels of an [AC Light Dimmer Module](https://robotdyn.com/ac-light-dimmer-module-4-channel-3-3v-5v-logic-ac-50-60hz-220v-110v.html)
 via phase-cut dimming (the [Dimmable Light](https://github.com/fabianoriccardi/dimmable-light)
@@ -225,6 +228,66 @@ working range, not the data-type limit.
 | `CLOCK_BLINK_MS` | 90 | 30–250 | How long the purple clock indicator stays bright on each beat. |
 
 Beat-lock subdivisions are fixed in `SUBDIV_BEATS` (1 bar, 1/2, 1/4, 1/8, 1/16).
+
+## Lunt CV (drum-reactive lights)
+[`lunt_cv.ino`](https://github.com/kbsezginel/polycule/blob/master/lunt/lunt_cv/lunt_cv.ino)
+is an alternate firmware for Lunt with a control-voltage input. The switch's ANIMATION
+position becomes **CV mode**: all four bulbs follow an incoming CV, e.g. an envelope
+follower on a drum mic, so the lights pulse with the hits. MANUAL mode is the same as
+above, except the TEMPO / SUBDIV targets are gone (there are no clock indicators), so
+the encoder press cycles **ALL → 1 → 2 → 3 → 4 → STRIP**.
+
+### Extra hardware
+- 1x 1/4" TRS female jack
+- 1x 100k resistor, A2 → GND (recommended): holds the input at 0 V when nothing is
+  plugged in, otherwise the floating pin makes the bulbs flicker
+- 1x 1k resistor in series between the ring and A2 (optional): protects the pin
+
+| Jack | Arduino pin | Notes |
+| --- | --- | --- |
+| Ring | A2 | CV in, 0–5 V (the ZOIA sends CV on the ring) |
+| Sleeve | GND | |
+| Tip | — | not connected |
+
+Use a **TRS** cable: a TS (mono) cable shorts the ring to ground.
+
+### ZOIA setup
+1. Config Menu → **CPort** → **CV**.
+2. On a page, run the drum mic's audio input into an envelope follower and connect its
+   output to a **cv out** module. The ZOIA sends 0–5 V on the control port's ring.
+3. Shape the response (rise/fall) on the ZOIA; Lunt maps the voltage straight to brightness.
+
+### CV mode controls
+| Control | Action |
+| --- | --- |
+| Turn encoder | Adjust the selected setting (right = more) |
+| Press encoder | Toggle the setting: **FLOOR** (orange bar) ↔ **SENS** (blue bar) |
+
+- **FLOOR** — bulb brightness with no signal. Keeping the filaments warm just below a
+  visible glow makes the bulbs respond much faster to hits. Default 40, up to 160.
+- **SENS** — how much CV it takes to reach full brightness: from 5 V (least sensitive,
+  the default) down to ~0.5 V (most).
+
+The strip shows a live **red meter** of the CV level: the leftmost pixel alone means
+silence (below the noise gate), and the full strip means full brightness. While you turn
+or press the encoder it briefly shows the selected setting's bar instead. MIDI notes/CC
+are ignored in CV mode. FLOOR and SENS are kept across mode switches but reset on power-up.
+
+**Calibrating:** play a hard hit and turn SENS up until the meter just reaches the right
+end. If the second pixel flickers with no one playing, raise `CV_NOISE_GATE`.
+
+### Tunable parameters (lunt_cv.ino)
+| Variable | Value | Range | Description |
+| --- | --- | --- | --- |
+| `CV_MODE_LEVEL` | `LOW` | `LOW` / `HIGH` | Switch level that selects CV mode. |
+| `CV_NOISE_GATE` | 20 | 0–100 | Readings at or below this (~0.1 V) count as silence (bulbs at FLOOR). |
+| `CV_FLOOR_DEFAULT` | 40 | 0–160 | FLOOR at power-up. |
+| `CV_FLOOR_MAX` / `CV_FLOOR_STEP` | 160 / 4 | — | FLOOR limit and change per detent. |
+| `CV_FULL_DEFAULT` | 1023 | 102–1023 | SENS at power-up: the reading that gives full brightness (1023 = 5 V). |
+| `CV_FULL_MIN` / `CV_FULL_STEP` | 102 / 32 | — | Most sensitive SENS (~0.5 V) and change per detent (~0.16 V). |
+| `CV_BRIGHT_MAX` | 255 | 0–255 | Bulb brightness at full CV. |
+| `CV_UPDATE_MS` | 2 | 1–10 | How often the CV is read and the bulbs updated. |
+| `CV_METER_REFRESH_MS` | 40 | 20–100 | Minimum time between meter redraws (each strip refresh briefly pauses the dimmer timing). |
 
 ## Troubleshooting
 
