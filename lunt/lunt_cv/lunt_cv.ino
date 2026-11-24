@@ -39,6 +39,9 @@
 
 const int  ENCODER_STEP   = 8;     // MANUAL brightness change per encoder detent
 const unsigned long BUTTON_DEBOUNCE_MS = 200;
+// The mode switch must read the same level this long before the mode changes, so a
+// noise spike (e.g. from the dimmer) can't flip modes and reset the bulbs.
+const unsigned long SWITCH_DEBOUNCE_MS = 50;
 const byte MANUAL_RESET_BRIGHTNESS = 128;   // all bulbs reset to this on entering MANUAL
 const byte STRIP_BRIGHTNESS_DEFAULT = 60;   // NeoPixel indicator brightness at boot, 0-255
 const byte STRIP_BRIGHTNESS_MIN = 5;        // floor so the indicator never goes fully dark
@@ -115,6 +118,8 @@ uint32_t COLOR_SENS_BLUE;       // CV mode SENS setting bar
 // -------------------------------- STATE / RUNTIME ---------------------------------
 enum Mode { MODE_MANUAL, MODE_CV };
 Mode gMode = MODE_MANUAL;
+Mode gSwitchReading = MODE_MANUAL;     // last raw switch reading (debounce)
+unsigned long gSwitchChangedAt = 0;    // when the raw reading last changed
 
 bool gStripDirty = true;
 
@@ -192,7 +197,8 @@ void setup() {
   DimmableLight::setSyncPin(DIM_SYNC_PIN);
   DimmableLight::begin();
 
-  gMode = readModeSwitch();
+  gMode = gSwitchReading = readModeSwitch();
+  gSwitchChangedAt = millis();
   onModeChange();
 }
 
@@ -200,11 +206,7 @@ void setup() {
 // >x< LOOP >x<
 // ----------------------------------------------------------------------------------
 void loop() {
-  Mode mode = readModeSwitch();
-  if (mode != gMode) {
-    gMode = mode;
-    onModeChange();
-  }
+  updateModeSwitch();
 
   MIDI.read();           // notes/CC act only in MANUAL (gated in the handlers)
   handleEncoder();
@@ -238,6 +240,18 @@ void loop() {
 
 Mode readModeSwitch() {
   return (digitalRead(SWITCH_PIN) == CV_MODE_LEVEL) ? MODE_CV : MODE_MANUAL;
+}
+
+// Change mode only once the switch has read the new level for SWITCH_DEBOUNCE_MS.
+void updateModeSwitch() {
+  Mode r = readModeSwitch();
+  if (r != gSwitchReading) {               // reading changed: restart the steady timer
+    gSwitchReading = r;
+    gSwitchChangedAt = millis();
+  } else if (r != gMode && millis() - gSwitchChangedAt >= SWITCH_DEBOUNCE_MS) {
+    gMode = r;
+    onModeChange();
+  }
 }
 
 void onModeChange() {

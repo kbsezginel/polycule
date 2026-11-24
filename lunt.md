@@ -196,6 +196,7 @@ working range, not the data-type limit.
 | `ANIM_MODE_LEVEL` | `LOW` | `LOW` / `HIGH` | Switch level that selects ANIMATION (the other position is MANUAL). |
 | `ENCODER_STEP` | 8 | 1–32 | Brightness / free-speed change per encoder detent. |
 | `BUTTON_DEBOUNCE_MS` | 200 | 50–500 | Minimum ms between accepted encoder-button presses. |
+| `SWITCH_DEBOUNCE_MS` | 50 | 20–200 | The mode switch must hold a level this long before the mode changes (rejects noise from the dimmer). |
 | `LONG_PRESS_MS` | 600 | 300–1500 | Hold time to exit an animation (shorter = a re-sync). |
 | `MANUAL_RESET_BRIGHTNESS` | 128 | 0–255 | All bulbs reset to this level when MANUAL mode is entered. |
 
@@ -280,6 +281,7 @@ end. If the second pixel flickers with no one playing, raise `CV_NOISE_GATE`.
 | Variable | Value | Range | Description |
 | --- | --- | --- | --- |
 | `CV_MODE_LEVEL` | `LOW` | `LOW` / `HIGH` | Switch level that selects CV mode. |
+| `SWITCH_DEBOUNCE_MS` | 50 | 20–200 | The mode switch must hold a level this long before the mode changes (rejects noise from the dimmer). |
 | `CV_NOISE_GATE` | 20 | 0–100 | Readings at or below this (~0.1 V) count as silence (bulbs at FLOOR). |
 | `CV_FLOOR_DEFAULT` | 40 | 0–160 | FLOOR at power-up. |
 | `CV_FLOOR_MAX` / `CV_FLOOR_STEP` | 160 / 4 | — | FLOOR limit and change per detent. |
